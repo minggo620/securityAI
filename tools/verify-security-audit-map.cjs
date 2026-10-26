@@ -26,11 +26,13 @@ function tables(text) {
 const parsed = tables(doc);
 check('整体字段统计与原结构路径一致',()=>{
   const inventory=JSON.parse(require('node:child_process').execFileSync(process.execPath,[path.join(__dirname,'security-audit-field-stats.cjs')],{encoding:'utf8',maxBuffer:1024*1024}));
-  assert.deepEqual(inventory.summary,{structures:7,qualifiedPaths:282,relativePaths:232,globalNames:85,topLevelOccurrences:61,machineCheckedPaths:93});
-  inventory.structures.forEach((s,i)=>{const t=parsed.find(t=>t.section.startsWith(`E.5.${i+1} `));assert(t,s.title);assert.equal(t.rows.length,s.count,s.title);assert.deepEqual(t.rows.map(r=>r[0].replaceAll('`','')),s.fields.map(f=>f.path),s.title);t.rows.forEach((r,j)=>assert.equal(r[1],s.fields[j].status));});
+  assert.deepEqual(inventory.summary,{structures:7,contractBranchPaths:416,qualifiedPaths:282,relativePaths:232,lexicalNames:85,lexicalCollisions:58,topLevelOccurrences:61,machineCheckedPaths:93});
+  const bindings=inventory.structures.flatMap(s=>s.branches.flatMap(b=>b.fields));assert.equal(bindings.length,416);assert.equal(new Set(bindings.map(f=>f.fieldKey)).size,416);
+  inventory.structures.forEach((s,i)=>{const expected=s.branches.flatMap(b=>b.fields.map(f=>({...f,branch:b.name})));const t=parsed.find(t=>t.section.startsWith(`E.5.${i+1} `));assert(t,s.title);assert.equal(t.rows.length,expected.length,s.title);assert.deepEqual(t.rows.map(r=>r[0].replaceAll('`','').replaceAll('\\|','|')),expected.map(f=>f.fieldKey),s.title);assert.deepEqual(t.rows.map(r=>r[1]),expected.map(f=>f.branch),s.title);assert.deepEqual(t.rows.map(r=>r[2].replaceAll('`','')),expected.map(f=>f.path),s.title);t.rows.forEach((r,j)=>assert.equal(r[3],expected[j].status));});
   assert.equal(inventory.proposalSummary.occurrences,91);
   return inventory.summary;
 });
+check('416 个字段绑定的定义位置有效且指向字段',()=>{const inventory=JSON.parse(require('node:child_process').execFileSync(process.execPath,[path.join(__dirname,'security-audit-field-stats.cjs')],{encoding:'utf8',maxBuffer:1024*1024}));for(const f of inventory.structures.flatMap(s=>s.branches.flatMap(b=>b.fields))){const line=fs.readFileSync(path.join(skill,f.source.file),'utf8').split(/\r?\n/)[f.source.line-1]||'';const sourceName=f.name==='proposed_verdict'?'verdict':f.name;assert(line.includes(sourceName),`${f.fieldKey} -> ${f.source.file}:${f.source.line}`);assert(f.semanticRole&&f.semanticRole.trim(),f.fieldKey)}return 416;});
 const schema = JSON.parse(fs.readFileSync(path.join(skill, 'report-schema.json'), 'utf8'));
 const ledgerSource = fs.readFileSync(path.join(skill, 'validate-coverage-ledger.cjs'), 'utf8');
 const findingsValidator = require(path.join(skill, 'validate-findings.cjs'));
