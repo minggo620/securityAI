@@ -175,5 +175,5 @@ console.log(JSON.stringify({
   source_contracts: alignmentResult.source_contracts,
   ddl_sha256: sha256(ddl),
   ddl_body_sha256: declaredBodyHash,
-  target_runtime_validation: 'remote_parser_pass_isolated_execution_pending'
+  target_runtime_validation: 'remote_core_schema_applied_core_behavior_smoke_pass_full_matrix_pending'
 }, null, 2));

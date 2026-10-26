@@ -80,6 +80,8 @@ FROM audit_schema_version;
 
 ## C. 最小行为测试
 
+2026-10-26 已在远程 `ai_security` 使用 `synthetic-db-acceptance` 完成核心冒烟验收：正向 run→Agent→hypothesis→score→attack→validation→finding 链路、非法 CHECK、缺失外键、重复幂等键、P3/P5 输入约束、人工标签约束、多对多假设关系和 `ON DELETE RESTRICT` 均符合预期。所有测试在事务中执行或因预期失败自动回滚，合成数据残留为 0。完整故障矩阵和最小权限 Writer 重放仍待后续验收。
+
 在项目远程数据库完成建表后，使用不含真实源码、凭据或审计结果的合成数据进行最小行为测试：
 
 1. 插入 run、payload、event，验证 UTC 时间和 UTF-8。

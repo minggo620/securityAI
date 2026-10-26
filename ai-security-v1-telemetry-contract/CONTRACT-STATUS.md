@@ -6,6 +6,21 @@
 
 当前已完成远程 `ai_security` 的 36 张核心表创建及排序规则迁移，但**尚未开始修改 Skill**。目标兼容基线是已配置的远程 MySQL 8.0.26；本地 MySQL 5.7 不作为通过标准。
 
+## 本次验收结果（2026-10-26）
+
+| 验收项 | 结果 | 说明 |
+| --- | --- | --- |
+| 本地契约与字段对齐 | PASS | `verify-contract.cjs`、`verify-skill-db-alignment.cjs` 均通过 |
+| 远程版本与数据库编码 | PASS | MySQL 8.0.26；数据库为 `utf8mb4_general_ci` |
+| 核心表与表级排序规则 | PASS | 36/36 张表为 `utf8mb4_general_ci` |
+| 文本列排序规则 | PASS | 227/227 个 utf8mb4 文本列为 `utf8mb4_general_ci` |
+| ASCII 标识列与外键 | PASS | 142 个 `ascii_bin` 列保持不变；104 个外键兼容 |
+| 视图与 schema seed | NOT APPLIED | 当前按最小建表范围为 0 个视图、0 条 seed |
+| 核心约束与幂等重放冒烟 | PASS | 正向链路、CHECK、外键、P3/P5 输入、人工标签、多对多关系和重复幂等键均通过；合成数据已回滚 |
+| 完整状态矩阵与真实 Writer 重放 | PENDING | 仍需最小权限 Writer 和更完整的故障/重放矩阵 |
+| TLS `VERIFY_IDENTITY` | BLOCKED | 远程缺少可信 CA |
+| 运行时 Writer 权限 | BLOCKED | 当前账号为 `ALL PRIVILEGES ... WITH GRANT OPTION`，不能作为 Writer |
+
 ## 已完成
 
 | 项目 | 结果 | 证据 |
