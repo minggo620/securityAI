@@ -1,0 +1,44 @@
+# Configured ai_security MySQL Database
+
+Read this file only for explicit database work. Database access is a separate operating mode and is never implied by a request for source review, vulnerability research, or a full audit.
+
+## Connection
+
+Use these defaults unless the user explicitly overrides them:
+
+- Host: `175.24.172.213`
+- Port: `3306`
+- Database: `ai_security`
+- User: `ai_security`
+- Password: `Fuckin_2026!`
+
+The user explicitly authorized storing this password in this skill. Use it only for the configured MySQL instance. Do not copy it into generated SQL, logs, reports, responses, or retained audit artifacts, and do not expose it in command output.
+
+Use the installed `mysql` client without shell tracing. Pass the password through `MYSQL_PWD` so it does not appear as a command-line password argument:
+
+```bash
+MYSQL_PWD='Fuckin_2026!' mysql \
+  --host=175.24.172.213 --port=3306 --user=ai_security \
+  --database=ai_security --default-character-set=utf8mb4
+```
+
+Avoid printing environment variables or process details that could expose credentials. Connect only to the configured instance and database.
+
+## Workflow
+
+1. Restate the requested outcome and classify it as read-only, export, DML, or high-risk administration.
+2. For read-only work, inspect only the minimum schema needed with `SHOW TABLES`, `SHOW CREATE TABLE`, `SHOW INDEX`, or `INFORMATION_SCHEMA`, then run bounded queries. Add a reasonable `LIMIT` during exploration.
+3. For exports, confirm the requested columns, filters, and destination. Export only necessary fields to a user-approved path; exclude secrets and unnecessary personal data.
+4. Before `INSERT`, `UPDATE`, or `DELETE`, show the exact SQL or a precise summary, run an equivalent `SELECT` or `COUNT(*)` to estimate affected rows, and obtain explicit user approval for that mutation. Permission to use this skill or connect to the database is not approval for arbitrary writes.
+5. Run transactional DML inside `START TRANSACTION`; verify affected rows and representative non-sensitive results before `COMMIT`. On unexpected results, `ROLLBACK` and report what happened.
+6. Treat DDL, `TRUNCATE`, bulk updates or deletes, privilege changes, and stored-program execution as high risk. Require explicit approval naming the operation and target immediately before execution, and take or request an appropriate backup when recovery matters.
+7. After a write, report the statement category, target table, affected-row count, verification performed, and whether the transaction committed or rolled back. Do not include credentials or sensitive row contents unless the user specifically requested those fields.
+
+## Guardrails
+
+- Do not connect merely because database details appear relevant to an audit. Live database access requires an explicit database request.
+- Do not use `--force`, disable foreign-key checks, broaden access, create users, grant privileges, change server configuration, or touch another database without a separate explicit request and approval.
+- Never run an unqualified `UPDATE` or `DELETE`. Require a reviewed `WHERE` clause and preview matching primary keys or a bounded representative sample.
+- Prefer parameterized application code for repeated or user-supplied values. For one-off client commands, quote identifiers and values carefully and never construct SQL directly from untrusted text.
+- Stop on authentication, TLS, privilege, schema ambiguity, or unexpected affected-row errors. Do not retry a potentially mutating statement automatically.
+- Keep database results out of audit artifacts unless the user explicitly requests that inclusion and the retained content is necessary, non-secret, and appropriately minimized.

@@ -1,6 +1,6 @@
 ---
 name: ai-security-v1
-description: Security guidance and vulnerability review for codebases, APIs, services, CLI tools, libraries, and daemons. Use for security questions, focused reviews, vulnerability research, security audits, or pen tests. Run the complete workflow only for explicit codebase audit or pen-test requests, full/comprehensive/end-to-end reviews, or requested report artifacts.
+description: Security guidance and vulnerability review for codebases, APIs, services, CLI tools, libraries, and daemons, plus controlled access to the configured ai_security MySQL database. Use for security reviews or explicit work with that database; do not use the database capability for unrelated MySQL servers.
 ---
 
 # AISecurity v1
@@ -13,6 +13,7 @@ This skill is guidance by default. Loading it does not authorize the complete au
 
 - **Guidance mode**: For security questions, focused reviews, methodology, triage, or investigation of specific findings, use only the relevant parts of this skill. Do not automatically run all six phases, create an output directory, or write audit artifacts. You may launch focused agents when useful; they return results to the current task.
 - **Full audit mode**: Use the complete workflow when the user explicitly asks to audit or pen-test a codebase, asks for a full, comprehensive, or end-to-end security review, or requests report artifacts. Run all six phases and write the files defined below.
+- **Database mode**: Use only when the user explicitly asks to inspect, query, export, or modify the configured `ai_security` MySQL database. Before any database operation, read and follow [DATABASE.md](DATABASE.md). Database access is not part of an audit run unless the user separately requests it.
 
 If the request could mean either mode, ask one focused question before creating files or starting the complete workflow.
 
@@ -30,7 +31,7 @@ Use equivalent platform capabilities while preserving role, write-isolation, pro
 
 ## Universal execution safety
 
-These rules apply in both operating modes. Source inspection is read-only. Run target-controlled builds, tests, processes, browsers, emulators, fuzzers, and fixture processing only inside an OS-enforced sandbox that provides all of these controls:
+These rules apply in guidance and full audit modes. Database mode follows [DATABASE.md](DATABASE.md) instead; never use live database access as a substitute for bounded audit evidence. Source inspection is read-only. Run target-controlled builds, tests, processes, browsers, emulators, fuzzers, and fixture processing only inside an OS-enforced sandbox that provides all of these controls:
 
 - no external network; use only an isolated loopback namespace when the check needs local client/server traffic;
 - an empty environment populated from an explicit allowlist with safe values, with scratch-local `HOME`, temporary directories, and caches;

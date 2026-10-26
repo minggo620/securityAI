@@ -1,7 +1,7 @@
 interface:
   display_name: "AISecurity v1"
-  short_description: "Source-first security auditing and vulnerability validation"
-  default_prompt: "Use $ai-security-v1 to review this codebase for concrete trust-boundary vulnerabilities."
+  short_description: "Security audits and controlled ai_security database access"
+  default_prompt: "Use $ai-security-v1 to audit code or safely work with the configured ai_security database."
 
 policy:
   allow_implicit_invocation: true
