@@ -24,6 +24,13 @@ function tables(text) {
   return output;
 }
 const parsed = tables(doc);
+check('整体字段统计与原结构路径一致',()=>{
+  const inventory=JSON.parse(require('node:child_process').execFileSync(process.execPath,[path.join(__dirname,'security-audit-field-stats.cjs')],{encoding:'utf8',maxBuffer:1024*1024}));
+  assert.deepEqual(inventory.summary,{structures:7,qualifiedPaths:282,relativePaths:232,globalNames:85,topLevelOccurrences:61,machineCheckedPaths:93});
+  inventory.structures.forEach((s,i)=>{const t=parsed.find(t=>t.section.startsWith(`E.5.${i+1} `));assert(t,s.title);assert.equal(t.rows.length,s.count,s.title);assert.deepEqual(t.rows.map(r=>r[0].replaceAll('`','')),s.fields.map(f=>f.path),s.title);t.rows.forEach((r,j)=>assert.equal(r[1],s.fields[j].status));});
+  assert.equal(inventory.proposalSummary.occurrences,91);
+  return inventory.summary;
+});
 const schema = JSON.parse(fs.readFileSync(path.join(skill, 'report-schema.json'), 'utf8'));
 const ledgerSource = fs.readFileSync(path.join(skill, 'validate-coverage-ledger.cjs'), 'utf8');
 const findingsValidator = require(path.join(skill, 'validate-findings.cjs'));

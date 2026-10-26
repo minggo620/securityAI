@@ -1,5 +1,7 @@
 # security-audit skill 执行流程、数据字典与调查轨迹采集说明
 
+字段数量入口：[整个 skill 的字段统计总览](#附录-e-整个-skill-的字段统计总览)。原有固定命名的执行字段按 7 类结构合计 282 个属性路径出现，字段名跨结构去重为 85 个；具体口径、分支要求和建议字段另列于附录 E。
+
 ## 0. 文档范围与阅读规则
 
 | 项目 | 说明 |
@@ -1153,4 +1155,504 @@ MySQL 类型、DDL、索引、增量写入和执行器接入是下一阶段；�
 | 下一步怎么映射 MySQL | 第 17 节；当前还没有 DDL。 |
 | 如何分析并改良 skill，避免错误结论 | 第 18–19 节。 |
 | 原始类别/关键字定义在哪里 | 附录 B–C；版本依据在附录 A。 |
+
+<!-- FIELD-STATS:START -->
+## 附录 E. 整个 skill 的字段统计总览
+
+本附录由只读统计脚本依据当前本机原 skill 的 schema、脚本与 Markdown 返回模板生成；统计的是**定义**，不是某次运行实际生成的字段。原 skill 文件未修改。入口：HTML 的“整个 skill 字段统计”。
+
+### E.1 范围与计数口径
+
+
+| 口径 | 数量 | 含义与边界 |
+| --- | --- | --- |
+| 执行数据结构 | 7 | metadata、ledger、Hunter、critic、Phase 3、findings、Phase 5，共 7 类。 |
+| 结构限定属性路径出现数 | 282 | 主统计：结构名＋完整路径。同一字段被不同结构携带，分别计次；同一结构的多个裁决分支先取并集。不是 282 个互不重复的字段名，也不是一次运行固定写入 282 项。 |
+| 字段名称跨结构去重 | 85 | 只比较属性名；例如 fingerprint、record.fingerprint、candidates[].fingerprint 归为同一名称。名称相同不代表语义或约束相同。 |
+| 去掉结构名前缀的路径去重 | 232 | 辅助指标：相同路径字符串只计一次，但可能掩盖不同结构中的不同职责，不作主统计。 |
+| 顶层字段出现数（分支并集） | 61 | 各结构顶层键并集的合计。不是全局唯一顶层键数。 |
+| 两个校验器明确检查的路径集合 | 93 | ledger 47＋findings 46；不意味着对其余 wrapper 或原始 Agent 返回有独立专用 schema 校验。 |
+| 未命名的 metadata 必记信息 | 3 | selected companion files、prior-run paths、shared-file owners；有记录要求，没有固定 JSON 键名，不计入原有字段总数。 |
+| 侦察/架构信息概念行 | 16 | 第 7 节的概念分类，不是原文定义的 16 个 JSON 属性。四个 Recon 无固定 JSON 字段总数，不能把这种未定义写成实际输出 0 个字段。 |
+| 建议新增的属性路径出现数 X | 91 | 第 16.1–16.3：70；第 7 节建议侦察键：18；第 6 节建议命名：3。与原有 282 分开，不相加。 |
+| 建议新增名称去重 X | 90 | 91 项含 statement 的两种路径；run_id、invariant、status 与原有名称重叠，但新增记录位置/用途不等于原 skill 已实现。 |
+
+**计数规则：**容器键（例如 `checks`）与对象成员键（例如 `checks[].method`）分别计数；数组索引和数组实例数量不计数。状态值、攻击类别、事件类型值、方法码值、Markdown 标题、schema 的 `properties/required/type` 等关键字，以及校验器内部 `LIMITS` 配置键都不属于审计数据字段。SKILL.md 的 YAML 安装元信息 `name/description` 两键单独视为配置，未混入执行字段总数。
+
+**没有固定字段全集的部分：**Recon 返回、architecture.md、三份人类报告、工具 stdout/stderr 均没有统一 JSON 字段契约。它们的信息要求不能机械转成原有属性数量。ledger 还允许额外 bookkeeping，47 只表示明确规定的字段路径，而不是所有可能合法属性的上限。
+
+**必填/条件/可选：**本附录分为“跨分支合并分类”和“具体分支内分类”。必填指该字段的父对象/数组元素存在时必须有该键，不表示每次运行必须生成数组元素；条件包括特定裁决/返回分支、配对 lifecycle、validation_plan 至少一项。可选父对象的子成员仍可在父对象存在时必填，例如 remediation.code_changes 可选、每个改动项的 file_name/fixed_code 必填。合并表的可选数为 0 不表示具体分支没有可选字段，需看 E.3。字段值可以是 null 或空数组时，键仍可能必填。
+
+### E.2 各结构的字段数量（分支并集）
+
+
+| 结构 | 顶层键 | 全部路径 | 父对象内必填（共用） | 条件/分支限定 | 共用可选 | 名称去重 | 定义来源 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| run-metadata.json | 10 | 10 | 9 | 1 | 0 | 10 | N：固定名称的文字要求 |
+| coverage-ledger.json 单元 | 20 | 47 | 45 | 2 | 0 | 27 | E：脚本校验 |
+| Hunter 返回 JSON | 4 | 67 | 36 | 31 | 0 | 55 | E：Markdown 模板＋引用 schema |
+| coverage critic 返回 JSON | 4 | 14 | 14 | 0 | 0 | 13 | E：Markdown 模板 |
+| Phase 3 verifier 返回 | 2 | 48 | 16 | 32 | 0 | 37 | E：Markdown wrapper＋引用 schema |
+| findings.json 记录 | 17 | 46 | 14 | 32 | 0 | 35 | E：JSON schema＋脚本 |
+| Phase 5 verifier 返回 | 4 | 50 | 1 | 49 | 0 | 37 | E：Markdown wrapper＋引用 schema |
+
+- `run-metadata.json`：9 个最少固定键＋1 个不完整时的原因键；source_ref 的 commit/dirty 子键未固定，不能编造。另有 3 项必记信息没有固定属性名。
+- `coverage-ledger.json 单元`：19 个顶层必填键＋2 个配对生命周期条件路径；数组可空不代表键可省略。允许额外 bookkeeping，所以已定义字段集合不是所有允许字段的有限全集。
+- `Hunter 返回 JSON`：4 个顶层键；candidate 展开 confirmed/NV 两分支。proposed_verdict 替换 verdict；units[].checks 的嵌套六键逐个计入。没有独立 Hunter schema/专用校验器。
+- `coverage critic 返回 JSON`：4 个顶层键；excluded_blocks 数组容器本身也是一个字段。逐 ID 理由的结构没有固定，不能额外计入。
+- `Phase 3 verifier 返回`：decision/record 两键＋完整记录。record 内字段在 findings 中已定义，这里计为结构出现，不是新增独立字段名。
+- `findings.json 记录`：三分支按同一路径取并集。17 个顶层键的并集并不表示每条记录有 17 键；各分支禁止的字段不得携带。
+- `Phase 5 verifier 返回`：verified 只有 decision/fingerprint；replace 为 decision/reason/record 并展开所选完整记录。不能把两种返回合并成四键必填。
+
+### E.3 具体分支内的必填、条件与可选
+
+
+| 结构 | 分支 | 顶层键 | 全部路径 | 父对象内必填 | 条件 | 可选 |
+| --- | --- | --- | --- | --- | --- | --- |
+| run-metadata.json | 运行元数据 | 10 | 10 | 9 | 1 | 0 |
+| coverage-ledger.json 单元 | 单元与嵌套对象 | 20 | 47 | 45 | 2 | 0 |
+| Hunter 返回 JSON | confirmed | 4 | 62 | 61 | 0 | 1 |
+| Hunter 返回 JSON | needs_validation | 4 | 41 | 39 | 2 | 0 |
+| coverage critic 返回 JSON | critic 返回 | 4 | 14 | 14 | 0 | 0 |
+| Phase 3 verifier 返回 | confirmed | 2 | 42 | 41 | 0 | 1 |
+| Phase 3 verifier 返回 | needs_validation | 2 | 21 | 19 | 2 | 0 |
+| Phase 3 verifier 返回 | rejected | 2 | 18 | 18 | 0 | 0 |
+| findings.json 记录 | confirmed | 13 | 40 | 39 | 0 | 1 |
+| findings.json 记录 | needs_validation | 9 | 19 | 17 | 2 | 0 |
+| findings.json 记录 | rejected | 8 | 16 | 16 | 0 | 0 |
+| Phase 5 verifier 返回 | verified | 2 | 2 | 2 | 0 | 0 |
+| Phase 5 verifier 返回 | replace/confirmed | 3 | 43 | 42 | 0 | 1 |
+| Phase 5 verifier 返回 | replace/needs_validation | 3 | 22 | 20 | 2 | 0 |
+| Phase 5 verifier 返回 | replace/rejected | 3 | 19 | 19 | 0 | 0 |
+
+这里不把多个分支的数量相加成为结构总数；共有路径会重复。`validation_plan.local/deployment` 没有分别被 schema required，但 validator 要求至少一个适用且非空，因此归为条件。`remediation.code_changes` 是 confirmed 分支唯一可选路径；嵌套的 file_name/fixed_code 在每个改动对象存在时必填。
+
+### E.4 同名字段的重复位置
+
+
+| 字段名 | 路径出现次数 | 出现结构 |
+| --- | --- | --- |
+| `agent_id` | 5 | coverage-ledger.json 单元；Hunter 返回 JSON |
+| `artifact` | 3 | coverage-ledger.json 单元；Hunter 返回 JSON |
+| `attack_class` | 4 | coverage-ledger.json 单元；Hunter 返回 JSON；coverage critic 返回 JSON |
+| `attacker_perspective` | 4 | Hunter 返回 JSON；Phase 3 verifier 返回；findings.json 记录；Phase 5 verifier 返回 |
+| `block` | 2 | coverage-ledger.json 单元；coverage critic 返回 JSON |
+| `blockers` | 4 | Hunter 返回 JSON；Phase 3 verifier 返回；findings.json 记录；Phase 5 verifier 返回 |
+| `boundary` | 4 | coverage-ledger.json 单元；Hunter 返回 JSON；coverage critic 返回 JSON |
+| `claimed_root_cause` | 4 | Hunter 返回 JSON；Phase 3 verifier 返回；findings.json 记录；Phase 5 verifier 返回 |
+| `code_changes` | 4 | Hunter 返回 JSON；Phase 3 verifier 返回；findings.json 记录；Phase 5 verifier 返回 |
+| `conditions` | 4 | Hunter 返回 JSON；Phase 3 verifier 返回；findings.json 记录；Phase 5 verifier 返回 |
+| `confidence` | 4 | Hunter 返回 JSON；Phase 3 verifier 返回；findings.json 记录；Phase 5 verifier 返回 |
+| `coverage_id` | 2 | coverage-ledger.json 单元；Hunter 返回 JSON |
+| `decision` | 2 | Phase 3 verifier 返回；Phase 5 verifier 返回 |
+| `deployment` | 4 | Hunter 返回 JSON；Phase 3 verifier 返回；findings.json 记录；Phase 5 verifier 返回 |
+| `description` | 16 | Hunter 返回 JSON；Phase 3 verifier 返回；findings.json 记录；Phase 5 verifier 返回 |
+| `evidence` | 4 | Hunter 返回 JSON；Phase 3 verifier 返回；findings.json 记录；Phase 5 verifier 返回 |
+| `excluded_blocks` | 2 | coverage-ledger.json 单元；coverage critic 返回 JSON |
+| `execution` | 4 | Hunter 返回 JSON；Phase 3 verifier 返回；findings.json 记录；Phase 5 verifier 返回 |
+| `file` | 8 | Hunter 返回 JSON；Phase 3 verifier 返回；findings.json 记录；Phase 5 verifier 返回 |
+| `file_name` | 4 | Hunter 返回 JSON；Phase 3 verifier 返回；findings.json 记录；Phase 5 verifier 返回 |
+| `fingerprint` | 5 | Hunter 返回 JSON；Phase 3 verifier 返回；findings.json 记录；Phase 5 verifier 返回 |
+| `fixed_code` | 4 | Hunter 返回 JSON；Phase 3 verifier 返回；findings.json 记录；Phase 5 verifier 返回 |
+| `impact` | 4 | Hunter 返回 JSON；Phase 3 verifier 返回；findings.json 记录；Phase 5 verifier 返回 |
+| `instructions` | 4 | Hunter 返回 JSON；Phase 3 verifier 返回；findings.json 记录；Phase 5 verifier 返回 |
+| `intended_behavior` | 4 | Hunter 返回 JSON；Phase 3 verifier 返回；findings.json 记录；Phase 5 verifier 返回 |
+| `invariant` | 3 | coverage-ledger.json 单元；Hunter 返回 JSON |
+| `kind` | 8 | Hunter 返回 JSON；Phase 3 verifier 返回；findings.json 记录；Phase 5 verifier 返回 |
+| `lifecycle` | 2 | coverage-ledger.json 单元 |
+| `likelihood` | 4 | Hunter 返回 JSON；Phase 3 verifier 返回；findings.json 记录；Phase 5 verifier 返回 |
+| `line` | 8 | Hunter 返回 JSON；Phase 3 verifier 返回；findings.json 记录；Phase 5 verifier 返回 |
+| `local` | 4 | Hunter 返回 JSON；Phase 3 verifier 返回；findings.json 记录；Phase 5 verifier 返回 |
+| `local_checks` | 2 | coverage-ledger.json 单元 |
+| `method` | 3 | coverage-ledger.json 单元；Hunter 返回 JSON |
+| `observed_result` | 4 | Hunter 返回 JSON；Phase 3 verifier 返回；findings.json 记录；Phase 5 verifier 返回 |
+| `overall_severity` | 4 | Hunter 返回 JSON；Phase 3 verifier 返回；findings.json 记录；Phase 5 verifier 返回 |
+| `payloads` | 4 | Hunter 返回 JSON；Phase 3 verifier 返回；findings.json 记录；Phase 5 verifier 返回 |
+| `reason` | 20 | coverage-ledger.json 单元；Hunter 返回 JSON；coverage critic 返回 JSON；Phase 3 verifier 返回；findings.json 记录；Phase 5 verifier 返回 |
+| `record` | 2 | Phase 3 verifier 返回；Phase 5 verifier 返回 |
+| `remediation` | 4 | Hunter 返回 JSON；Phase 3 verifier 返回；findings.json 记录；Phase 5 verifier 返回 |
+| `result` | 3 | coverage-ledger.json 单元；Hunter 返回 JSON |
+| `result_fingerprints` | 2 | coverage-ledger.json 单元 |
+| `reviewed_paths` | 6 | coverage-ledger.json 单元；Hunter 返回 JSON |
+| `root_cause` | 4 | Hunter 返回 JSON；Phase 3 verifier 返回；findings.json 记录；Phase 5 verifier 返回 |
+| `scope` | 4 | Hunter 返回 JSON；Phase 3 verifier 返回；findings.json 记录；Phase 5 verifier 返回 |
+| `score` | 12 | Hunter 返回 JSON；Phase 3 verifier 返回；findings.json 记录；Phase 5 verifier 返回 |
+| `selected_companion_blocks` | 2 | coverage-ledger.json 单元；coverage critic 返回 JSON |
+| `severity` | 4 | Hunter 返回 JSON；Phase 3 verifier 返回；findings.json 记录；Phase 5 verifier 返回 |
+| `starting_paths` | 3 | coverage-ledger.json 单元；Hunter 返回 JSON；coverage critic 返回 JSON |
+| `status` | 2 | coverage-ledger.json 单元 |
+| `strategy` | 4 | Hunter 返回 JSON；Phase 3 verifier 返回；findings.json 记录；Phase 5 verifier 返回 |
+| `subsystem` | 4 | coverage-ledger.json 单元；Hunter 返回 JSON；coverage critic 返回 JSON |
+| `surface` | 4 | coverage-ledger.json 单元；Hunter 返回 JSON；coverage critic 返回 JSON |
+| `title` | 4 | Hunter 返回 JSON；Phase 3 verifier 返回；findings.json 记录；Phase 5 verifier 返回 |
+| `trace` | 4 | Hunter 返回 JSON；Phase 3 verifier 返回；findings.json 记录；Phase 5 verifier 返回 |
+| `unresolved` | 3 | coverage-ledger.json 单元；Hunter 返回 JSON |
+| `validation_plan` | 4 | Hunter 返回 JSON；Phase 3 verifier 返回；findings.json 记录；Phase 5 verifier 返回 |
+| `verdict` | 3 | Phase 3 verifier 返回；findings.json 记录；Phase 5 verifier 返回 |
+| `wave` | 2 | coverage-ledger.json 单元 |
+
+完整的 85 个去重名称：
+
+`agent_id`、`artifact`、`attack_class`、`attacker_perspective`、`attempts`、`block`、`blockers`、`boundary`、`budget`、`candidate_fingerprints`、`candidates`、`canonical_refs`、`checks`、`claimed_root_cause`、`code_changes`、`conditions`、`confidence`、`coverage_id`、`decision`、`deployment`、`description`、`disposition`、`evidence`、`excluded_blocks`、`execution`、`execution_policy`、`file`、`file_name`、`fingerprint`、`fixed_code`、`hardening`、`impact`、`incomplete_reason`、`instructions`、`intended_behavior`、`invariant`、`kind`、`lifecycle`、`likelihood`、`line`、`local`、`local_checks`、`method`、`missing_units`、`observed_result`、`ordinary_attack_class_block`、`overall_severity`、`payloads`、`prior_status`、`profile`、`proposed_verdict`、`reason`、`reassign_ids`、`reassignment_reason`、`record`、`remediation`、`repo`、`resolved_prior_leads`、`result`、`result_fingerprints`、`reviewed_paths`、`root_cause`、`run_id`、`run_status`、`scope`、`scope_paths`、`score`、`selected_companion_blocks`、`severity`、`source_ref`、`starting_paths`、`status`、`stop`、`strategy`、`subsystem`、`surface`、`target`、`title`、`trace`、`uncovered`、`units`、`unresolved`、`validation_plan`、`verdict`、`wave`。
+
+### E.5 七类结构的逐字段清单
+
+每个表仅统计一类结构。来源链接指向定义文件；完整语义、类型与用途仍见正文第 6、8、10、11、12 节。已展开候选和 record 内全部 schema 字段，不使用“其他字段”占位来计数。
+
+#### E.5.1 run-metadata.json
+
+N：固定名称的文字要求；共 10 个属性路径，10 个顶层键。9 个最少固定键＋1 个不完整时的原因键；source_ref 的 commit/dirty 子键未固定，不能编造。另有 3 项必记信息没有固定属性名。
+
+
+| 字段路径 | 合并分类 | 具体分支内要求 | 定义依据 |
+| --- | --- | --- | --- |
+| `run_id` | 必填 | 运行元数据:必填 | [SKILL.md:86](/Users/daitongmin/.codex/skills/security-audit/SKILL.md:86) |
+| `repo` | 必填 | 运行元数据:必填 | [SKILL.md:86](/Users/daitongmin/.codex/skills/security-audit/SKILL.md:86) |
+| `target` | 必填 | 运行元数据:必填 | [SKILL.md:86](/Users/daitongmin/.codex/skills/security-audit/SKILL.md:86) |
+| `source_ref` | 必填 | 运行元数据:必填 | [SKILL.md:86](/Users/daitongmin/.codex/skills/security-audit/SKILL.md:86) |
+| `profile` | 必填 | 运行元数据:必填 | [SKILL.md:86](/Users/daitongmin/.codex/skills/security-audit/SKILL.md:86) |
+| `scope_paths` | 必填 | 运行元数据:必填 | [SKILL.md:86](/Users/daitongmin/.codex/skills/security-audit/SKILL.md:86) |
+| `budget` | 必填 | 运行元数据:必填 | [SKILL.md:86](/Users/daitongmin/.codex/skills/security-audit/SKILL.md:86) |
+| `execution_policy` | 必填 | 运行元数据:必填 | [SKILL.md:86](/Users/daitongmin/.codex/skills/security-audit/SKILL.md:86) |
+| `run_status` | 必填 | 运行元数据:必填 | [SKILL.md:86](/Users/daitongmin/.codex/skills/security-audit/SKILL.md:86) |
+| `incomplete_reason` | 条件 | 运行元数据:条件 | [SKILL.md:123](/Users/daitongmin/.codex/skills/security-audit/SKILL.md:123) |
+
+#### E.5.2 coverage-ledger.json 单元
+
+E：脚本校验；共 47 个属性路径，20 个顶层键。19 个顶层必填键＋2 个配对生命周期条件路径；数组可空不代表键可省略。允许额外 bookkeeping，所以已定义字段集合不是所有允许字段的有限全集。
+
+
+| 字段路径 | 合并分类 | 具体分支内要求 | 定义依据 |
+| --- | --- | --- | --- |
+| `coverage_id` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:26](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:26) |
+| `canonical_refs` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:26](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:26) |
+| `surface` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:26](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:26) |
+| `boundary` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:26](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:26) |
+| `subsystem` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:26](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:26) |
+| `attack_class` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:26](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:26) |
+| `starting_paths` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:26](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:26) |
+| `ordinary_attack_class_block` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:26](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:26) |
+| `selected_companion_blocks` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:26](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:26) |
+| `excluded_blocks` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:26](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:26) |
+| `prior_status` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:26](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:26) |
+| `attempts` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:26](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:26) |
+| `wave` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:26](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:26) |
+| `status` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:26](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:26) |
+| `agent_id` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:26](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:26) |
+| `reviewed_paths` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:26](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:26) |
+| `local_checks` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:26](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:26) |
+| `result_fingerprints` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:26](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:26) |
+| `unresolved` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:26](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:26) |
+| `canonical_refs.surface` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:47](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:47) |
+| `canonical_refs.boundary` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:47](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:47) |
+| `canonical_refs.subsystem` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:47](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:47) |
+| `canonical_refs.attack_class` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:47](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:47) |
+| `canonical_refs.lifecycle` | 条件 | 单元与嵌套对象:条件 | [validate-coverage-ledger.cjs:663](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:663) |
+| `lifecycle` | 条件 | 单元与嵌套对象:条件 | [RECONNAISSANCE.md:135](/Users/daitongmin/.codex/skills/security-audit/RECONNAISSANCE.md:135) |
+| `excluded_blocks[].block` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:471](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:471) |
+| `excluded_blocks[].reason` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:471](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:471) |
+| `attempts[].wave` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:59](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:59) |
+| `attempts[].status` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:59](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:59) |
+| `attempts[].agent_id` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:59](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:59) |
+| `attempts[].reviewed_paths` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:59](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:59) |
+| `attempts[].local_checks` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:59](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:59) |
+| `attempts[].result_fingerprints` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:59](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:59) |
+| `attempts[].unresolved` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:59](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:59) |
+| `attempts[].reassignment_reason` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:59](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:59) |
+| `local_checks[].agent_id` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:421](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:421) |
+| `local_checks[].reviewed_paths` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:421](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:421) |
+| `local_checks[].invariant` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:421](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:421) |
+| `local_checks[].method` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:421](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:421) |
+| `local_checks[].result` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:421](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:421) |
+| `local_checks[].artifact` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:421](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:421) |
+| `attempts[].local_checks[].agent_id` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:421](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:421) |
+| `attempts[].local_checks[].reviewed_paths` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:421](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:421) |
+| `attempts[].local_checks[].invariant` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:421](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:421) |
+| `attempts[].local_checks[].method` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:421](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:421) |
+| `attempts[].local_checks[].result` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:421](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:421) |
+| `attempts[].local_checks[].artifact` | 必填 | 单元与嵌套对象:必填 | [validate-coverage-ledger.cjs:421](/Users/daitongmin/.codex/skills/security-audit/validate-coverage-ledger.cjs:421) |
+
+#### E.5.3 Hunter 返回 JSON
+
+E：Markdown 模板＋引用 schema；共 67 个属性路径，4 个顶层键。4 个顶层键；candidate 展开 confirmed/NV 两分支。proposed_verdict 替换 verdict；units[].checks 的嵌套六键逐个计入。没有独立 Hunter schema/专用校验器。
+
+
+| 字段路径 | 合并分类 | 具体分支内要求 | 定义依据 |
+| --- | --- | --- | --- |
+| `units` | 必填 | confirmed:必填；needs_validation:必填 | [HUNTING.md:173](/Users/daitongmin/.codex/skills/security-audit/HUNTING.md:173) |
+| `units[].coverage_id` | 必填 | confirmed:必填；needs_validation:必填 | [HUNTING.md:173](/Users/daitongmin/.codex/skills/security-audit/HUNTING.md:173) |
+| `units[].disposition` | 必填 | confirmed:必填；needs_validation:必填 | [HUNTING.md:173](/Users/daitongmin/.codex/skills/security-audit/HUNTING.md:173) |
+| `units[].reviewed_paths` | 必填 | confirmed:必填；needs_validation:必填 | [HUNTING.md:173](/Users/daitongmin/.codex/skills/security-audit/HUNTING.md:173) |
+| `units[].checks` | 必填 | confirmed:必填；needs_validation:必填 | [HUNTING.md:173](/Users/daitongmin/.codex/skills/security-audit/HUNTING.md:173) |
+| `units[].checks[].agent_id` | 必填 | confirmed:必填；needs_validation:必填 | [HUNTING.md:173](/Users/daitongmin/.codex/skills/security-audit/HUNTING.md:173) |
+| `units[].checks[].reviewed_paths` | 必填 | confirmed:必填；needs_validation:必填 | [HUNTING.md:173](/Users/daitongmin/.codex/skills/security-audit/HUNTING.md:173) |
+| `units[].checks[].invariant` | 必填 | confirmed:必填；needs_validation:必填 | [HUNTING.md:173](/Users/daitongmin/.codex/skills/security-audit/HUNTING.md:173) |
+| `units[].checks[].method` | 必填 | confirmed:必填；needs_validation:必填 | [HUNTING.md:173](/Users/daitongmin/.codex/skills/security-audit/HUNTING.md:173) |
+| `units[].checks[].result` | 必填 | confirmed:必填；needs_validation:必填 | [HUNTING.md:173](/Users/daitongmin/.codex/skills/security-audit/HUNTING.md:173) |
+| `units[].checks[].artifact` | 必填 | confirmed:必填；needs_validation:必填 | [HUNTING.md:173](/Users/daitongmin/.codex/skills/security-audit/HUNTING.md:173) |
+| `units[].candidate_fingerprints` | 必填 | confirmed:必填；needs_validation:必填 | [HUNTING.md:173](/Users/daitongmin/.codex/skills/security-audit/HUNTING.md:173) |
+| `units[].unresolved` | 必填 | confirmed:必填；needs_validation:必填 | [HUNTING.md:173](/Users/daitongmin/.codex/skills/security-audit/HUNTING.md:173) |
+| `candidates` | 必填 | confirmed:必填；needs_validation:必填 | [HUNTING.md:173](/Users/daitongmin/.codex/skills/security-audit/HUNTING.md:173) |
+| `hardening` | 必填 | confirmed:必填；needs_validation:必填 | [HUNTING.md:173](/Users/daitongmin/.codex/skills/security-audit/HUNTING.md:173) |
+| `uncovered` | 必填 | confirmed:必填；needs_validation:必填 | [HUNTING.md:173](/Users/daitongmin/.codex/skills/security-audit/HUNTING.md:173) |
+| `uncovered[].surface` | 必填 | confirmed:必填；needs_validation:必填 | [HUNTING.md:173](/Users/daitongmin/.codex/skills/security-audit/HUNTING.md:173) |
+| `uncovered[].boundary` | 必填 | confirmed:必填；needs_validation:必填 | [HUNTING.md:173](/Users/daitongmin/.codex/skills/security-audit/HUNTING.md:173) |
+| `uncovered[].subsystem` | 必填 | confirmed:必填；needs_validation:必填 | [HUNTING.md:173](/Users/daitongmin/.codex/skills/security-audit/HUNTING.md:173) |
+| `uncovered[].attack_class` | 必填 | confirmed:必填；needs_validation:必填 | [HUNTING.md:173](/Users/daitongmin/.codex/skills/security-audit/HUNTING.md:173) |
+| `uncovered[].starting_paths` | 必填 | confirmed:必填；needs_validation:必填 | [HUNTING.md:173](/Users/daitongmin/.codex/skills/security-audit/HUNTING.md:173) |
+| `uncovered[].reason` | 必填 | confirmed:必填；needs_validation:必填 | [HUNTING.md:173](/Users/daitongmin/.codex/skills/security-audit/HUNTING.md:173) |
+| `candidates[].proposed_verdict` | 必填 | confirmed:必填；needs_validation:必填 | [report-schema.json:10](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:10) |
+| `candidates[].fingerprint` | 必填 | confirmed:必填；needs_validation:必填 | [report-schema.json:14](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:14) |
+| `candidates[].title` | 必填 | confirmed:必填；needs_validation:必填 | [report-schema.json:20](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:20) |
+| `candidates[].description` | 必填 | confirmed:必填；needs_validation:必填 | [report-schema.json:8](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:8) |
+| `candidates[].root_cause` | 条件 | confirmed:必填 | [report-schema.json:30](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:30) |
+| `candidates[].intended_behavior` | 条件 | confirmed:必填 | [report-schema.json:35](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:35) |
+| `candidates[].trace` | 必填 | confirmed:必填；needs_validation:必填 | [report-schema.json:40](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:40) |
+| `candidates[].trace[].kind` | 必填 | confirmed:必填；needs_validation:必填 | [report-schema.json:47](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:47) |
+| `candidates[].trace[].file` | 必填 | confirmed:必填；needs_validation:必填 | [report-schema.json:51](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:51) |
+| `candidates[].trace[].line` | 必填 | confirmed:必填；needs_validation:必填 | [report-schema.json:55](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:55) |
+| `candidates[].trace[].scope` | 必填 | confirmed:必填；needs_validation:必填 | [report-schema.json:59](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:59) |
+| `candidates[].trace[].description` | 必填 | confirmed:必填；needs_validation:必填 | [report-schema.json:8](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:8) |
+| `candidates[].evidence` | 必填 | confirmed:必填；needs_validation:必填 | [report-schema.json:74](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:74) |
+| `candidates[].evidence[].file` | 必填 | confirmed:必填；needs_validation:必填 | [report-schema.json:51](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:51) |
+| `candidates[].evidence[].line` | 必填 | confirmed:必填；needs_validation:必填 | [report-schema.json:55](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:55) |
+| `candidates[].evidence[].description` | 必填 | confirmed:必填；needs_validation:必填 | [report-schema.json:8](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:8) |
+| `candidates[].conditions` | 条件 | confirmed:必填 | [report-schema.json:99](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:99) |
+| `candidates[].conditions[].kind` | 条件 | confirmed:必填 | [report-schema.json:47](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:47) |
+| `candidates[].conditions[].description` | 条件 | confirmed:必填 | [report-schema.json:8](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:8) |
+| `candidates[].execution` | 条件 | confirmed:必填 | [report-schema.json:119](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:119) |
+| `candidates[].execution.attacker_perspective` | 条件 | confirmed:必填 | [report-schema.json:123](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:123) |
+| `candidates[].execution.payloads` | 条件 | confirmed:必填 | [report-schema.json:128](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:128) |
+| `candidates[].execution.instructions` | 条件 | confirmed:必填 | [report-schema.json:136](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:136) |
+| `candidates[].execution.observed_result` | 条件 | confirmed:必填 | [report-schema.json:145](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:145) |
+| `candidates[].remediation` | 条件 | confirmed:必填 | [report-schema.json:154](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:154) |
+| `candidates[].remediation.strategy` | 条件 | confirmed:必填 | [report-schema.json:157](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:157) |
+| `candidates[].remediation.code_changes` | 条件 | confirmed:可选 | [report-schema.json:162](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:162) |
+| `candidates[].remediation.code_changes[].file_name` | 条件 | confirmed:必填 | [report-schema.json:167](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:167) |
+| `candidates[].remediation.code_changes[].fixed_code` | 条件 | confirmed:必填 | [report-schema.json:171](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:171) |
+| `candidates[].severity` | 条件 | confirmed:必填 | [report-schema.json:183](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:183) |
+| `candidates[].severity.likelihood` | 条件 | confirmed:必填 | [report-schema.json:186](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:186) |
+| `candidates[].severity.likelihood.score` | 条件 | confirmed:必填 | [report-schema.json:189](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:189) |
+| `candidates[].severity.likelihood.reason` | 条件 | confirmed:必填 | [report-schema.json:193](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:193) |
+| `candidates[].severity.impact` | 条件 | confirmed:必填 | [report-schema.json:202](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:202) |
+| `candidates[].severity.impact.score` | 条件 | confirmed:必填 | [report-schema.json:189](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:189) |
+| `candidates[].severity.impact.reason` | 条件 | confirmed:必填 | [report-schema.json:193](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:193) |
+| `candidates[].severity.overall_severity` | 条件 | confirmed:必填 | [report-schema.json:218](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:218) |
+| `candidates[].confidence` | 条件 | confirmed:必填 | [report-schema.json:226](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:226) |
+| `candidates[].confidence.score` | 条件 | confirmed:必填 | [report-schema.json:189](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:189) |
+| `candidates[].confidence.reason` | 条件 | confirmed:必填 | [report-schema.json:193](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:193) |
+| `candidates[].claimed_root_cause` | 条件 | needs_validation:必填 | [report-schema.json:269](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:269) |
+| `candidates[].blockers` | 条件 | needs_validation:必填 | [report-schema.json:333](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:333) |
+| `candidates[].validation_plan` | 条件 | needs_validation:必填 | [report-schema.json:343](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:343) |
+| `candidates[].validation_plan.local` | 条件 | needs_validation:条件 | [report-schema.json:346](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:346) |
+| `candidates[].validation_plan.deployment` | 条件 | needs_validation:条件 | [report-schema.json:351](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:351) |
+
+#### E.5.4 coverage critic 返回 JSON
+
+E：Markdown 模板；共 14 个属性路径，4 个顶层键。4 个顶层键；excluded_blocks 数组容器本身也是一个字段。逐 ID 理由的结构没有固定，不能额外计入。
+
+
+| 字段路径 | 合并分类 | 具体分支内要求 | 定义依据 |
+| --- | --- | --- | --- |
+| `missing_units` | 必填 | critic 返回:必填 | [HUNTING.md:226](/Users/daitongmin/.codex/skills/security-audit/HUNTING.md:226) |
+| `missing_units[].surface` | 必填 | critic 返回:必填 | [HUNTING.md:226](/Users/daitongmin/.codex/skills/security-audit/HUNTING.md:226) |
+| `missing_units[].boundary` | 必填 | critic 返回:必填 | [HUNTING.md:226](/Users/daitongmin/.codex/skills/security-audit/HUNTING.md:226) |
+| `missing_units[].subsystem` | 必填 | critic 返回:必填 | [HUNTING.md:226](/Users/daitongmin/.codex/skills/security-audit/HUNTING.md:226) |
+| `missing_units[].attack_class` | 必填 | critic 返回:必填 | [HUNTING.md:226](/Users/daitongmin/.codex/skills/security-audit/HUNTING.md:226) |
+| `missing_units[].starting_paths` | 必填 | critic 返回:必填 | [HUNTING.md:226](/Users/daitongmin/.codex/skills/security-audit/HUNTING.md:226) |
+| `missing_units[].selected_companion_blocks` | 必填 | critic 返回:必填 | [HUNTING.md:226](/Users/daitongmin/.codex/skills/security-audit/HUNTING.md:226) |
+| `missing_units[].excluded_blocks` | 必填 | critic 返回:必填 | [HUNTING.md:226](/Users/daitongmin/.codex/skills/security-audit/HUNTING.md:226) |
+| `missing_units[].excluded_blocks[].block` | 必填 | critic 返回:必填 | [HUNTING.md:226](/Users/daitongmin/.codex/skills/security-audit/HUNTING.md:226) |
+| `missing_units[].excluded_blocks[].reason` | 必填 | critic 返回:必填 | [HUNTING.md:226](/Users/daitongmin/.codex/skills/security-audit/HUNTING.md:226) |
+| `missing_units[].reason` | 必填 | critic 返回:必填 | [HUNTING.md:226](/Users/daitongmin/.codex/skills/security-audit/HUNTING.md:226) |
+| `reassign_ids` | 必填 | critic 返回:必填 | [HUNTING.md:226](/Users/daitongmin/.codex/skills/security-audit/HUNTING.md:226) |
+| `resolved_prior_leads` | 必填 | critic 返回:必填 | [HUNTING.md:226](/Users/daitongmin/.codex/skills/security-audit/HUNTING.md:226) |
+| `stop` | 必填 | critic 返回:必填 | [HUNTING.md:226](/Users/daitongmin/.codex/skills/security-audit/HUNTING.md:226) |
+
+#### E.5.5 Phase 3 verifier 返回
+
+E：Markdown wrapper＋引用 schema；共 48 个属性路径，2 个顶层键。decision/record 两键＋完整记录。record 内字段在 findings 中已定义，这里计为结构出现，不是新增独立字段名。
+
+
+| 字段路径 | 合并分类 | 具体分支内要求 | 定义依据 |
+| --- | --- | --- | --- |
+| `decision` | 必填 | confirmed:必填；needs_validation:必填；rejected:必填 | [VALIDATION-AND-REPORTING.md:43](/Users/daitongmin/.codex/skills/security-audit/VALIDATION-AND-REPORTING.md:43) |
+| `record` | 必填 | confirmed:必填；needs_validation:必填；rejected:必填 | [VALIDATION-AND-REPORTING.md:43](/Users/daitongmin/.codex/skills/security-audit/VALIDATION-AND-REPORTING.md:43) |
+| `record.verdict` | 必填 | confirmed:必填；needs_validation:必填；rejected:必填 | [report-schema.json:10](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:10) |
+| `record.fingerprint` | 必填 | confirmed:必填；needs_validation:必填；rejected:必填 | [report-schema.json:14](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:14) |
+| `record.title` | 必填 | confirmed:必填；needs_validation:必填；rejected:必填 | [report-schema.json:20](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:20) |
+| `record.description` | 必填 | confirmed:必填；needs_validation:必填；rejected:必填 | [report-schema.json:8](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:8) |
+| `record.root_cause` | 条件 | confirmed:必填 | [report-schema.json:30](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:30) |
+| `record.intended_behavior` | 条件 | confirmed:必填 | [report-schema.json:35](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:35) |
+| `record.trace` | 必填 | confirmed:必填；needs_validation:必填；rejected:必填 | [report-schema.json:40](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:40) |
+| `record.trace[].kind` | 必填 | confirmed:必填；needs_validation:必填；rejected:必填 | [report-schema.json:47](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:47) |
+| `record.trace[].file` | 必填 | confirmed:必填；needs_validation:必填；rejected:必填 | [report-schema.json:51](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:51) |
+| `record.trace[].line` | 必填 | confirmed:必填；needs_validation:必填；rejected:必填 | [report-schema.json:55](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:55) |
+| `record.trace[].scope` | 必填 | confirmed:必填；needs_validation:必填；rejected:必填 | [report-schema.json:59](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:59) |
+| `record.trace[].description` | 必填 | confirmed:必填；needs_validation:必填；rejected:必填 | [report-schema.json:8](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:8) |
+| `record.evidence` | 必填 | confirmed:必填；needs_validation:必填；rejected:必填 | [report-schema.json:74](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:74) |
+| `record.evidence[].file` | 必填 | confirmed:必填；needs_validation:必填；rejected:必填 | [report-schema.json:51](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:51) |
+| `record.evidence[].line` | 必填 | confirmed:必填；needs_validation:必填；rejected:必填 | [report-schema.json:55](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:55) |
+| `record.evidence[].description` | 必填 | confirmed:必填；needs_validation:必填；rejected:必填 | [report-schema.json:8](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:8) |
+| `record.conditions` | 条件 | confirmed:必填 | [report-schema.json:99](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:99) |
+| `record.conditions[].kind` | 条件 | confirmed:必填 | [report-schema.json:47](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:47) |
+| `record.conditions[].description` | 条件 | confirmed:必填 | [report-schema.json:8](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:8) |
+| `record.execution` | 条件 | confirmed:必填 | [report-schema.json:119](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:119) |
+| `record.execution.attacker_perspective` | 条件 | confirmed:必填 | [report-schema.json:123](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:123) |
+| `record.execution.payloads` | 条件 | confirmed:必填 | [report-schema.json:128](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:128) |
+| `record.execution.instructions` | 条件 | confirmed:必填 | [report-schema.json:136](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:136) |
+| `record.execution.observed_result` | 条件 | confirmed:必填 | [report-schema.json:145](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:145) |
+| `record.remediation` | 条件 | confirmed:必填 | [report-schema.json:154](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:154) |
+| `record.remediation.strategy` | 条件 | confirmed:必填 | [report-schema.json:157](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:157) |
+| `record.remediation.code_changes` | 条件 | confirmed:可选 | [report-schema.json:162](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:162) |
+| `record.remediation.code_changes[].file_name` | 条件 | confirmed:必填 | [report-schema.json:167](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:167) |
+| `record.remediation.code_changes[].fixed_code` | 条件 | confirmed:必填 | [report-schema.json:171](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:171) |
+| `record.severity` | 条件 | confirmed:必填 | [report-schema.json:183](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:183) |
+| `record.severity.likelihood` | 条件 | confirmed:必填 | [report-schema.json:186](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:186) |
+| `record.severity.likelihood.score` | 条件 | confirmed:必填 | [report-schema.json:189](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:189) |
+| `record.severity.likelihood.reason` | 条件 | confirmed:必填 | [report-schema.json:193](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:193) |
+| `record.severity.impact` | 条件 | confirmed:必填 | [report-schema.json:202](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:202) |
+| `record.severity.impact.score` | 条件 | confirmed:必填 | [report-schema.json:189](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:189) |
+| `record.severity.impact.reason` | 条件 | confirmed:必填 | [report-schema.json:193](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:193) |
+| `record.severity.overall_severity` | 条件 | confirmed:必填 | [report-schema.json:218](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:218) |
+| `record.confidence` | 条件 | confirmed:必填 | [report-schema.json:226](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:226) |
+| `record.confidence.score` | 条件 | confirmed:必填 | [report-schema.json:189](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:189) |
+| `record.confidence.reason` | 条件 | confirmed:必填 | [report-schema.json:193](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:193) |
+| `record.claimed_root_cause` | 条件 | needs_validation:必填；rejected:必填 | [report-schema.json:269](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:269) |
+| `record.blockers` | 条件 | needs_validation:必填 | [report-schema.json:333](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:333) |
+| `record.validation_plan` | 条件 | needs_validation:必填 | [report-schema.json:343](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:343) |
+| `record.validation_plan.local` | 条件 | needs_validation:条件 | [report-schema.json:346](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:346) |
+| `record.validation_plan.deployment` | 条件 | needs_validation:条件 | [report-schema.json:351](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:351) |
+| `record.reason` | 条件 | rejected:必填 | [report-schema.json:193](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:193) |
+
+#### E.5.6 findings.json 记录
+
+E：JSON schema＋脚本；共 46 个属性路径，17 个顶层键。三分支按同一路径取并集。17 个顶层键的并集并不表示每条记录有 17 键；各分支禁止的字段不得携带。
+
+
+| 字段路径 | 合并分类 | 具体分支内要求 | 定义依据 |
+| --- | --- | --- | --- |
+| `verdict` | 必填 | confirmed:必填；needs_validation:必填；rejected:必填 | [report-schema.json:10](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:10) |
+| `fingerprint` | 必填 | confirmed:必填；needs_validation:必填；rejected:必填 | [report-schema.json:14](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:14) |
+| `title` | 必填 | confirmed:必填；needs_validation:必填；rejected:必填 | [report-schema.json:20](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:20) |
+| `description` | 必填 | confirmed:必填；needs_validation:必填；rejected:必填 | [report-schema.json:8](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:8) |
+| `root_cause` | 条件 | confirmed:必填 | [report-schema.json:30](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:30) |
+| `intended_behavior` | 条件 | confirmed:必填 | [report-schema.json:35](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:35) |
+| `trace` | 必填 | confirmed:必填；needs_validation:必填；rejected:必填 | [report-schema.json:40](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:40) |
+| `trace[].kind` | 必填 | confirmed:必填；needs_validation:必填；rejected:必填 | [report-schema.json:47](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:47) |
+| `trace[].file` | 必填 | confirmed:必填；needs_validation:必填；rejected:必填 | [report-schema.json:51](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:51) |
+| `trace[].line` | 必填 | confirmed:必填；needs_validation:必填；rejected:必填 | [report-schema.json:55](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:55) |
+| `trace[].scope` | 必填 | confirmed:必填；needs_validation:必填；rejected:必填 | [report-schema.json:59](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:59) |
+| `trace[].description` | 必填 | confirmed:必填；needs_validation:必填；rejected:必填 | [report-schema.json:8](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:8) |
+| `evidence` | 必填 | confirmed:必填；needs_validation:必填；rejected:必填 | [report-schema.json:74](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:74) |
+| `evidence[].file` | 必填 | confirmed:必填；needs_validation:必填；rejected:必填 | [report-schema.json:51](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:51) |
+| `evidence[].line` | 必填 | confirmed:必填；needs_validation:必填；rejected:必填 | [report-schema.json:55](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:55) |
+| `evidence[].description` | 必填 | confirmed:必填；needs_validation:必填；rejected:必填 | [report-schema.json:8](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:8) |
+| `conditions` | 条件 | confirmed:必填 | [report-schema.json:99](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:99) |
+| `conditions[].kind` | 条件 | confirmed:必填 | [report-schema.json:47](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:47) |
+| `conditions[].description` | 条件 | confirmed:必填 | [report-schema.json:8](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:8) |
+| `execution` | 条件 | confirmed:必填 | [report-schema.json:119](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:119) |
+| `execution.attacker_perspective` | 条件 | confirmed:必填 | [report-schema.json:123](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:123) |
+| `execution.payloads` | 条件 | confirmed:必填 | [report-schema.json:128](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:128) |
+| `execution.instructions` | 条件 | confirmed:必填 | [report-schema.json:136](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:136) |
+| `execution.observed_result` | 条件 | confirmed:必填 | [report-schema.json:145](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:145) |
+| `remediation` | 条件 | confirmed:必填 | [report-schema.json:154](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:154) |
+| `remediation.strategy` | 条件 | confirmed:必填 | [report-schema.json:157](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:157) |
+| `remediation.code_changes` | 条件 | confirmed:可选 | [report-schema.json:162](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:162) |
+| `remediation.code_changes[].file_name` | 条件 | confirmed:必填 | [report-schema.json:167](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:167) |
+| `remediation.code_changes[].fixed_code` | 条件 | confirmed:必填 | [report-schema.json:171](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:171) |
+| `severity` | 条件 | confirmed:必填 | [report-schema.json:183](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:183) |
+| `severity.likelihood` | 条件 | confirmed:必填 | [report-schema.json:186](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:186) |
+| `severity.likelihood.score` | 条件 | confirmed:必填 | [report-schema.json:189](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:189) |
+| `severity.likelihood.reason` | 条件 | confirmed:必填 | [report-schema.json:193](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:193) |
+| `severity.impact` | 条件 | confirmed:必填 | [report-schema.json:202](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:202) |
+| `severity.impact.score` | 条件 | confirmed:必填 | [report-schema.json:189](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:189) |
+| `severity.impact.reason` | 条件 | confirmed:必填 | [report-schema.json:193](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:193) |
+| `severity.overall_severity` | 条件 | confirmed:必填 | [report-schema.json:218](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:218) |
+| `confidence` | 条件 | confirmed:必填 | [report-schema.json:226](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:226) |
+| `confidence.score` | 条件 | confirmed:必填 | [report-schema.json:189](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:189) |
+| `confidence.reason` | 条件 | confirmed:必填 | [report-schema.json:193](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:193) |
+| `claimed_root_cause` | 条件 | needs_validation:必填；rejected:必填 | [report-schema.json:269](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:269) |
+| `blockers` | 条件 | needs_validation:必填 | [report-schema.json:333](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:333) |
+| `validation_plan` | 条件 | needs_validation:必填 | [report-schema.json:343](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:343) |
+| `validation_plan.local` | 条件 | needs_validation:条件 | [report-schema.json:346](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:346) |
+| `validation_plan.deployment` | 条件 | needs_validation:条件 | [report-schema.json:351](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:351) |
+| `reason` | 条件 | rejected:必填 | [report-schema.json:193](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:193) |
+
+#### E.5.7 Phase 5 verifier 返回
+
+E：Markdown wrapper＋引用 schema；共 50 个属性路径，4 个顶层键。verified 只有 decision/fingerprint；replace 为 decision/reason/record 并展开所选完整记录。不能把两种返回合并成四键必填。
+
+
+| 字段路径 | 合并分类 | 具体分支内要求 | 定义依据 |
+| --- | --- | --- | --- |
+| `decision` | 必填 | verified:必填；replace/confirmed:必填；replace/needs_validation:必填；replace/rejected:必填 | [VALIDATION-AND-REPORTING.md:143](/Users/daitongmin/.codex/skills/security-audit/VALIDATION-AND-REPORTING.md:143) |
+| `fingerprint` | 条件 | verified:必填 | [VALIDATION-AND-REPORTING.md:143](/Users/daitongmin/.codex/skills/security-audit/VALIDATION-AND-REPORTING.md:143) |
+| `reason` | 条件 | replace/confirmed:必填；replace/needs_validation:必填；replace/rejected:必填 | [VALIDATION-AND-REPORTING.md:143](/Users/daitongmin/.codex/skills/security-audit/VALIDATION-AND-REPORTING.md:143) |
+| `record` | 条件 | replace/confirmed:必填；replace/needs_validation:必填；replace/rejected:必填 | [VALIDATION-AND-REPORTING.md:143](/Users/daitongmin/.codex/skills/security-audit/VALIDATION-AND-REPORTING.md:143) |
+| `record.verdict` | 条件 | replace/confirmed:必填；replace/needs_validation:必填；replace/rejected:必填 | [report-schema.json:10](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:10) |
+| `record.fingerprint` | 条件 | replace/confirmed:必填；replace/needs_validation:必填；replace/rejected:必填 | [report-schema.json:14](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:14) |
+| `record.title` | 条件 | replace/confirmed:必填；replace/needs_validation:必填；replace/rejected:必填 | [report-schema.json:20](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:20) |
+| `record.description` | 条件 | replace/confirmed:必填；replace/needs_validation:必填；replace/rejected:必填 | [report-schema.json:8](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:8) |
+| `record.root_cause` | 条件 | replace/confirmed:必填 | [report-schema.json:30](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:30) |
+| `record.intended_behavior` | 条件 | replace/confirmed:必填 | [report-schema.json:35](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:35) |
+| `record.trace` | 条件 | replace/confirmed:必填；replace/needs_validation:必填；replace/rejected:必填 | [report-schema.json:40](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:40) |
+| `record.trace[].kind` | 条件 | replace/confirmed:必填；replace/needs_validation:必填；replace/rejected:必填 | [report-schema.json:47](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:47) |
+| `record.trace[].file` | 条件 | replace/confirmed:必填；replace/needs_validation:必填；replace/rejected:必填 | [report-schema.json:51](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:51) |
+| `record.trace[].line` | 条件 | replace/confirmed:必填；replace/needs_validation:必填；replace/rejected:必填 | [report-schema.json:55](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:55) |
+| `record.trace[].scope` | 条件 | replace/confirmed:必填；replace/needs_validation:必填；replace/rejected:必填 | [report-schema.json:59](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:59) |
+| `record.trace[].description` | 条件 | replace/confirmed:必填；replace/needs_validation:必填；replace/rejected:必填 | [report-schema.json:8](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:8) |
+| `record.evidence` | 条件 | replace/confirmed:必填；replace/needs_validation:必填；replace/rejected:必填 | [report-schema.json:74](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:74) |
+| `record.evidence[].file` | 条件 | replace/confirmed:必填；replace/needs_validation:必填；replace/rejected:必填 | [report-schema.json:51](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:51) |
+| `record.evidence[].line` | 条件 | replace/confirmed:必填；replace/needs_validation:必填；replace/rejected:必填 | [report-schema.json:55](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:55) |
+| `record.evidence[].description` | 条件 | replace/confirmed:必填；replace/needs_validation:必填；replace/rejected:必填 | [report-schema.json:8](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:8) |
+| `record.conditions` | 条件 | replace/confirmed:必填 | [report-schema.json:99](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:99) |
+| `record.conditions[].kind` | 条件 | replace/confirmed:必填 | [report-schema.json:47](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:47) |
+| `record.conditions[].description` | 条件 | replace/confirmed:必填 | [report-schema.json:8](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:8) |
+| `record.execution` | 条件 | replace/confirmed:必填 | [report-schema.json:119](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:119) |
+| `record.execution.attacker_perspective` | 条件 | replace/confirmed:必填 | [report-schema.json:123](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:123) |
+| `record.execution.payloads` | 条件 | replace/confirmed:必填 | [report-schema.json:128](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:128) |
+| `record.execution.instructions` | 条件 | replace/confirmed:必填 | [report-schema.json:136](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:136) |
+| `record.execution.observed_result` | 条件 | replace/confirmed:必填 | [report-schema.json:145](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:145) |
+| `record.remediation` | 条件 | replace/confirmed:必填 | [report-schema.json:154](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:154) |
+| `record.remediation.strategy` | 条件 | replace/confirmed:必填 | [report-schema.json:157](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:157) |
+| `record.remediation.code_changes` | 条件 | replace/confirmed:可选 | [report-schema.json:162](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:162) |
+| `record.remediation.code_changes[].file_name` | 条件 | replace/confirmed:必填 | [report-schema.json:167](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:167) |
+| `record.remediation.code_changes[].fixed_code` | 条件 | replace/confirmed:必填 | [report-schema.json:171](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:171) |
+| `record.severity` | 条件 | replace/confirmed:必填 | [report-schema.json:183](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:183) |
+| `record.severity.likelihood` | 条件 | replace/confirmed:必填 | [report-schema.json:186](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:186) |
+| `record.severity.likelihood.score` | 条件 | replace/confirmed:必填 | [report-schema.json:189](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:189) |
+| `record.severity.likelihood.reason` | 条件 | replace/confirmed:必填 | [report-schema.json:193](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:193) |
+| `record.severity.impact` | 条件 | replace/confirmed:必填 | [report-schema.json:202](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:202) |
+| `record.severity.impact.score` | 条件 | replace/confirmed:必填 | [report-schema.json:189](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:189) |
+| `record.severity.impact.reason` | 条件 | replace/confirmed:必填 | [report-schema.json:193](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:193) |
+| `record.severity.overall_severity` | 条件 | replace/confirmed:必填 | [report-schema.json:218](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:218) |
+| `record.confidence` | 条件 | replace/confirmed:必填 | [report-schema.json:226](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:226) |
+| `record.confidence.score` | 条件 | replace/confirmed:必填 | [report-schema.json:189](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:189) |
+| `record.confidence.reason` | 条件 | replace/confirmed:必填 | [report-schema.json:193](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:193) |
+| `record.claimed_root_cause` | 条件 | replace/needs_validation:必填；replace/rejected:必填 | [report-schema.json:269](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:269) |
+| `record.blockers` | 条件 | replace/needs_validation:必填 | [report-schema.json:333](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:333) |
+| `record.validation_plan` | 条件 | replace/needs_validation:必填 | [report-schema.json:343](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:343) |
+| `record.validation_plan.local` | 条件 | replace/needs_validation:条件 | [report-schema.json:346](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:346) |
+| `record.validation_plan.deployment` | 条件 | replace/needs_validation:条件 | [report-schema.json:351](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:351) |
+| `record.reason` | 条件 | replace/rejected:必填 | [report-schema.json:193](/Users/daitongmin/.codex/skills/security-audit/report-schema.json:193) |
+
+### E.6 建议新增 X 的统计（不属于原有字段）
+
+
+| 建议结构 | 路径数 | 属性路径清单 |
+| --- | --- | --- |
+| 16.1 | 22 | `event_id`、`run_id`、`event_type`、`phase`、`step_code`、`agent_instance_id`、`parent_agent_instance_id`、`task_id`、`attempt_id`、`coverage_ids`、`hypothesis_ids`、`fingerprints`、`sequence_no`、`occurred_at`、`captured_at`、`caused_by_event_id`、`origin`、`payload_ref`、`payload_hash`、`schema_version`、`recorded_status`、`error_category` |
+| 16.2 | 24 | `hypothesis_id`、`hypothesis_version`、`statement`、`invariant`、`attacker_principal`、`starting_capability`、`controlled_input`、`expected_boundary_failure`、`supporting_fact_refs`、`counterevidence_refs`、`premises`、`premises[].statement`、`premises[].status`、`premises[].evidence_refs`、`experience_basis`、`applicability_rationale`、`alternative_explanations`、`next_discriminating_check`、`hypothesis_status`、`supersedes_version`、`split_from`、`merged_from`、`change_reason`、`trigger_evidence_refs` |
+| 16.3 | 24 | `analysis_action_id`、`method_code`、`selection_rationale`、`tool_call_id`、`tool_name`、`tool_version`、`inputs_ref`、`command_ref`、`reviewed_source_refs`、`expected_result`、`actual_result`、`exit_code`、`stdout_ref`、`stderr_ref`、`sandbox_policy_ref`、`sandbox_enforcement_result`、`artifact_id`、`artifact_hash`、`promotion_result`、`limitations`、`unresolved_facts`、`conclusion_relation`、`decision_summary`、`decision_basis_refs` |
+| 第 7 节建议侦察键 | 18 | `product_type`、`normal_actions`、`stack_facts`、`entry_facts`、`principal_facts`、`capability_facts`、`control_facts`、`transition_facts`、`flow_facts`、`derived_copy_facts`、`parallel_path_facts`、`local_check_options`、`prohibited_actions`、`visibility_gaps`、`sandbox_capabilities`、`promotion_capabilities`、`comparable_baseline`、`selection_decisions` |
+| 第 6 节非固定名称的命名建议 | 3 | `selected_companion_files`、`prior_run_paths`、`shared_file_owners` |
+
+本表仅对已有建议列表计数，没有实施这些扩展；也未声称这是所有可能扩展的全集。第 16.4 节是事件类型目录，不是额外字段表；`estimated_support` 是未来可选研究举例，未纳入上述正式建议表的 91 项。平台可观测 O 信息没有平台固定契约，不能给出跨平台统一字段总数。
+
+### E.7 可复核方式
+
+执行 `node tools/security-audit-field-stats.cjs summary` 重新核对数量；不加 summary 则输出完整结构与路径 JSON。schema 和 JSON 模板自动遍历；metadata 固定键、ledger 生命周期配对/历史尝试/检查对象组合按原文及脚本规则显式映射，并非宣称任意自然语言定义均可自动解析。统计以附录 A 的本机文件指纹为基线；原 skill 更新后需要重新生成本附录和 HTML 内嵌快照。两份文档使用同一统计对象。
+
+<!-- FIELD-STATS:END -->
 

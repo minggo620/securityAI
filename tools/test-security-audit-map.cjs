@@ -14,7 +14,18 @@ const { chromium } = require('/Users/daitongmin/.cache/codex-runtimes/codex-prim
     page.on('pageerror', e => errors.push(e.message));
     page.on('request', r => { if (/^https?:/.test(r.url())) requests.push(r.url()); });
     await page.goto(pathToFileURL(file).href);
-    assert.deepEqual(await page.evaluate(() => ({ ...window.auditMap.dataSummary(), dictionarySha256: undefined })), { steps: 38, tables: 66, categories: 162, dictionarySha256: undefined });
+    assert.deepEqual(await page.evaluate(() => ({ ...window.auditMap.dataSummary(), dictionarySha256: undefined })), { steps: 38, tables: 78, categories: 162, dictionarySha256: undefined });
+    const expectedStats=JSON.parse(require('node:child_process').execFileSync(process.execPath,[path.join(__dirname,'security-audit-field-stats.cjs')],{encoding:'utf8',maxBuffer:1024*1024}));
+    assert.deepEqual(await page.evaluate(()=>JSON.parse(document.getElementById('map-data').textContent).fieldStats),expectedStats);
+    await page.locator('[data-go="field-statistics"]').click();
+    assert((await page.locator('#detail').textContent()).includes('85 个'));
+    assert((await page.locator('#detail').textContent()).includes('282 项'));
+    await page.locator('#detail .subnode').filter({hasText:'E.5.3 Hunter 返回 JSON'}).click();
+    assert((await page.locator('#detail').textContent()).includes('candidates[].proposed_verdict'));
+    await page.locator('#detail .related button').filter({hasText:'candidates[].proposed_verdict',exact:true}).click();
+    assert((await page.locator('#detail').textContent()).includes('confirmed:必填'));
+    await page.locator('#detail > details').filter({has:page.locator('summary',{hasText:'原文依据'})}).locator('summary').first().click();
+    assert((await page.locator('#detail').textContent()).includes('report-schema.json'));
     assert.equal(await page.locator('#flow button').count(), 7);
     await page.locator('#flow [data-node="stage-2"]').click();
     assert.equal(await page.locator('#detail .subnode').count(), 13);
@@ -67,14 +78,14 @@ const { chromium } = require('/Users/daitongmin/.cache/codex-runtimes/codex-prim
     const layouts = [];
     for (const width of [1400, 1024, 768, 360, 320]) {
       await page.setViewportSize({ width, height: 1000 });
-      await page.evaluate(() => window.auditMap.select('P2.4'));
+      await page.evaluate(() => window.auditMap.select('field-statistics'));
       await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
       const size = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, viewport: document.documentElement.clientWidth }));
       if(size.scroll > size.viewport + 1) console.log(await page.evaluate(() => [...document.querySelectorAll('body *')].map(e => ({ tag: e.tagName, cls: e.className, text: e.textContent.slice(0,90), right: e.getBoundingClientRect().right, width: e.getBoundingClientRect().width })).filter(e => e.width && e.right > innerWidth + 1).slice(0,12)));
       assert(size.scroll <= size.viewport + 1, `Horizontal overflow at ${width}: ${JSON.stringify(size)}`);
       layouts.push({ width, noHorizontalOverflow: true });
     }
-    for (const spec of [{ width: 1400, scheme: 'light', node: 'stage-2', name: 'desktop' }, { width: 360, scheme: 'light', node: 'P2.4', name: 'mobile' }, { width: 1400, scheme: 'dark', node: 'stage-1', name: 'dark' }]) {
+    for (const spec of [{ width: 1400, scheme: 'light', node: 'field-statistics', name: 'desktop' }, { width: 360, scheme: 'light', node: 'field-statistics', name: 'mobile' }, { width: 1400, scheme: 'dark', node: 'field-statistics', name: 'dark' }]) {
       const fresh = await browser.newPage({ viewport: { width: spec.width, height: 1000 }, colorScheme: spec.scheme });
       fresh.on('pageerror', e => errors.push(e.message));
       fresh.on('request', r => { if (/^https?:/.test(r.url())) requests.push(r.url()); });

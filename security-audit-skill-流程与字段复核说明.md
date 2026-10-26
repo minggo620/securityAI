@@ -59,7 +59,7 @@
 
 | 检查 | 结果 |
 | --- | --- |
-| 604 个可导航节点 | 逐个渲染无脚本错误；默认不全部展开。 |
+| 994 个可导航节点（含新增字段统计） | 逐个渲染无脚本错误；默认不全部展开。 |
 | 阶段、子步骤、字段详情、源码片段 | 实际浏览器点击通过。 |
 | quick 分支、节点搜索、展开/收起 | 实际浏览器交互通过。 |
 | 屏幕宽度 | 1400、1024、768、360、320 px 无横向页面溢出；修正了长英文路径在极窄屏的换行。 |
@@ -70,3 +70,11 @@
 交互测试使用本机已有 Chrome 的临时空白配置，不读取用户浏览器账户，也未下载浏览器。测试脚本为 [test-security-audit-map.cjs](/Users/daitongmin/security/tools/test-security-audit-map.cjs)。这些测试验证导航/展示功能，不验证一个真实审计执行器。
 
 本次没有修改 skill 原文件、没有接入 MySQL、没有执行针对任何代码库的安全审计。复核基线为 2026-10-14 本机版本，而不是安全扫描完备性证明。
+
+## 整体字段统计补充核对
+
+新增的 Markdown 附录 E 和 HTML“整个 skill 字段统计”使用同一统计对象。范围为 7 类固定命名的执行数据结构：合计 282 个结构限定属性路径出现、85 个跨结构去重字段名；ledger 47 个路径、findings 46 个路径。分支内必填/条件/可选单独展示，建议 X 另计 91 个路径出现，不能与原有字段合计。
+
+schema 和 JSON 模板自动遍历；metadata 的固定键、ledger 生命周期配对/历史尝试/检查对象的组合按原文及脚本规则显式映射。数字是该边界下的定义统计，不是动态运行日志，也不是可扩展 bookkeeping 的有限上限。参考 [字段统计脚本](/Users/daitongmin/security/tools/security-audit-field-stats.cjs) 和 [同步生成脚本](/Users/daitongmin/security/tools/update-security-audit-field-stats.cjs)。
+
+本次重新核对了 78 张 Markdown 表、来源链接与行号、20 个原文件版本；新增统计对象与当前脚本输出一致。浏览器检查包括统计入口、Hunter candidate 的 proposed_verdict 字段及来源、所有节点和 320–1400 px 布局，未产生外部请求。
