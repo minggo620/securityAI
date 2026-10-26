@@ -66,7 +66,7 @@ const forbiddenSql = /^\s*(DROP\b|TRUNCATE\b|DELETE\s+FROM\b|GRANT\b|REVOKE\b|CR
 const forbiddenMatch = sqlWithoutComments.match(forbiddenSql);
 if (forbiddenMatch) fail(`forbidden SQL operation present: ${forbiddenMatch[1]}`);
 if (/password|passwd|secret|api[_-]?key|authorization\s*:/i.test(ddl)) fail('credential-like material present in DDL');
-if (!ddl.includes('COLLATE=utf8mb4_0900_ai_ci')) fail('target MySQL 8 collation missing');
+if (!ddl.includes('COLLATE=utf8mb4_general_ci')) fail('required table collation missing');
 if (!ddl.includes("telemetry_failure_policy IN ('best_effort','required')")) fail('dual telemetry failure policy missing');
 if (!ddl.includes('candidate_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin NULL')) fail('candidate observation is not nullable before consolidation');
 if (!ddl.includes('input_finding_revision_id')) fail('P5 finding revision input missing');
@@ -154,7 +154,9 @@ const target = loaded['target-mysql-profile.json'].value;
 if (target.observation_mode !== 'read_only') fail('target profile must come from read-only observation');
 if (target.server.version !== '8.0.26') fail(`target MySQL version mismatch: ${target.server.version}`);
 if (target.server.character_set_server !== 'utf8mb4' || target.server.collation_server !== 'utf8mb4_0900_ai_ci') fail('target server charset/collation mismatch');
-if (target.schema_observation.existing_audit_table_count !== 0) fail('target already contains audit_* tables; migration plan must be reconciled');
+if (target.schema_observation.database_character_set !== 'utf8mb4' || target.schema_observation.database_collation !== 'utf8mb4_general_ci') fail('target database charset/collation mismatch');
+if (target.schema_observation.existing_audit_table_count !== 36) fail('target audit_* table count does not match the applied core schema');
+if (target.connection_observation.required_writer_collation !== 'utf8mb4_general_ci') fail('required writer collation mismatch');
 if (target.account_observation.acceptable_for_runtime_writer !== false) fail('overprivileged configured account must not be approved as runtime Writer');
 if (target.connection_observation.verify_identity_result !== 'blocked_missing_trusted_ca') fail('unexpected TLS identity verification state');
 

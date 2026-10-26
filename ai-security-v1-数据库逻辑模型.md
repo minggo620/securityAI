@@ -311,7 +311,7 @@ Finding revision: draft → independently_decided → final_verified | replaced 
 
 下方代码块是原 `1.1.0-draft` 的历史候选 DDL，仅用于追溯字段来源，**已经被第 0 节的收敛决策取代，不得复制执行，也不得作为迁移输入**。它仍包含被移出的 15 张表，以及旧的单关系、候选顺序和 P5 血缘问题。
 
-`1.3.0-core-draft` 候选 DDL 已在 [`ai-security-v1-telemetry-contract/001_ai_security_core_schema.sql`](./ai-security-v1-telemetry-contract/001_ai_security_core_schema.sql) 生成，仅含 36 张核心表，并已通过静态契约检查与项目远程 MySQL 8.0.26 的 40 条非执行 `PREPARE` 解析。该结果不等于建表验收；真正建表时应直接使用项目远程数据库，并在用户明确批准该 DDL 后执行视图/FK/CHECK 行为测试和 Writer 权限验收。下方历史块不再需要、也不应“替换”；执行基线始终是版本化契约包。
+`1.3.0-core-draft` DDL 已在 [`ai-security-v1-telemetry-contract/001_ai_security_core_schema.sql`](./ai-security-v1-telemetry-contract/001_ai_security_core_schema.sql) 生成，仅含 36 张核心表，并已通过静态契约检查与项目远程 MySQL 8.0.26 的 40 条非执行 `PREPARE` 解析。36 张核心表已经在远程数据库创建，227 个 utf8mb4 文本列和 36 个表默认排序规则已经统一为 `utf8mb4_general_ci`；两个只读视图和 schema seed 仍按最小建表授权暂未应用。下方历史块不再需要、也不应“替换”；执行基线始终是版本化契约包。
 
 ```text
 -- ai-security-v1 telemetry schema 1.1.0-draft
@@ -326,7 +326,7 @@ CREATE TABLE audit_schema_version (
   applied_at DATETIME(6) NULL,
   created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   CONSTRAINT chk_asv_source CHECK (source_class IN ('S','O','P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_run (
   run_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -363,7 +363,7 @@ CREATE TABLE audit_run (
   CONSTRAINT chk_run_telemetry CHECK (telemetry_status IN ('healthy','degraded','pending_sync','synced','incomplete','disabled')),
   CONSTRAINT chk_run_outbox CHECK (outbox_status IN ('empty','pending','replaying','blocked','disabled')),
   CONSTRAINT chk_run_source CHECK (source_class IN ('S','O','P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_telemetry_consent (
   consent_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -386,7 +386,7 @@ CREATE TABLE audit_telemetry_consent (
   CONSTRAINT chk_consent_authority CHECK (authority_type IN ('explicit_user','organization_policy')),
   CONSTRAINT chk_consent_status CHECK (status IN ('active','revoked','expired')),
   CONSTRAINT chk_consent_source CHECK (source_class='P')
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_run_relation (
   run_relation_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -405,7 +405,7 @@ CREATE TABLE audit_run_relation (
   CONSTRAINT chk_rr_distinct CHECK (run_id<>prior_run_id),
   CONSTRAINT chk_rr_kind CHECK (relation_kind IN ('rerun','baseline','continuation','revalidation','comparison')),
   CONSTRAINT chk_rr_source CHECK (source_class='P')
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_writer_lease (
   writer_lease_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -427,7 +427,7 @@ CREATE TABLE audit_writer_lease (
   CONSTRAINT chk_writer_lease_status CHECK (status IN ('active','released','expired','superseded')),
   CONSTRAINT chk_writer_lease_time CHECK (expires_at>acquired_at),
   CONSTRAINT chk_writer_lease_source CHECK (source_class='P')
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_run_scope (
   scope_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -443,7 +443,7 @@ CREATE TABLE audit_run_scope (
   UNIQUE KEY uq_scope_order (run_id, ordinal),
   CONSTRAINT fk_scope_run FOREIGN KEY (run_id) REFERENCES audit_run(run_id) ON DELETE RESTRICT,
   CONSTRAINT chk_scope_source CHECK (source_class IN ('S','O','P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_payload (
   payload_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -481,7 +481,7 @@ CREATE TABLE audit_payload (
   CONSTRAINT chk_payload_redaction CHECK (redaction_status IN ('passed','redacted','blocked','metadata_only')),
   CONSTRAINT chk_payload_sensitivity CHECK (sensitivity IN ('public','internal','sensitive','restricted')),
   CONSTRAINT chk_payload_source CHECK (source_class IN ('S','O','P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_phase_execution (
   phase_execution_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -504,7 +504,7 @@ CREATE TABLE audit_phase_execution (
   CONSTRAINT chk_phase_code CHECK (phase_code IN ('P0','P1','P2','P3','P4','P5','P6')),
   CONSTRAINT chk_phase_status CHECK (status IN ('pending','running','completed','skipped','failed','incomplete')),
   CONSTRAINT chk_phase_source CHECK (source_class IN ('S','O','P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_event (
   event_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -532,7 +532,7 @@ CREATE TABLE audit_event (
   CONSTRAINT fk_event_payload FOREIGN KEY (payload_id) REFERENCES audit_payload(payload_id) ON DELETE RESTRICT,
   CONSTRAINT fk_event_cause FOREIGN KEY (causation_id) REFERENCES audit_event(event_id) ON DELETE RESTRICT,
   CONSTRAINT chk_event_source CHECK (source_class IN ('S','O','P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_event_source_ref (
   event_source_ref_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -551,7 +551,7 @@ CREATE TABLE audit_event_source_ref (
   CONSTRAINT fk_esr_event FOREIGN KEY (event_id) REFERENCES audit_event(event_id) ON DELETE RESTRICT,
   CONSTRAINT chk_esr_lines CHECK ((start_line IS NULL AND end_line IS NULL) OR (start_line>=1 AND end_line>=start_line)),
   CONSTRAINT chk_esr_source CHECK (source_class='P')
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_source_provenance (
   provenance_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -573,7 +573,7 @@ CREATE TABLE audit_source_provenance (
   CONSTRAINT fk_provenance_run FOREIGN KEY (run_id) REFERENCES audit_run(run_id) ON DELETE RESTRICT,
   CONSTRAINT fk_provenance_event FOREIGN KEY (event_id) REFERENCES audit_event(event_id) ON DELETE RESTRICT,
   CONSTRAINT chk_provenance_source CHECK (source_class IN ('S','O','P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_outbox_checkpoint (
   checkpoint_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -593,7 +593,7 @@ CREATE TABLE audit_outbox_checkpoint (
   CONSTRAINT fk_checkpoint_run FOREIGN KEY (run_id) REFERENCES audit_run(run_id) ON DELETE RESTRICT,
   CONSTRAINT fk_checkpoint_event FOREIGN KEY (event_id) REFERENCES audit_event(event_id) ON DELETE RESTRICT,
   CONSTRAINT chk_checkpoint_source CHECK (source_class='P')
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_ingest_failure (
   ingest_failure_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -615,7 +615,7 @@ CREATE TABLE audit_ingest_failure (
   CONSTRAINT fk_ingest_run FOREIGN KEY (run_id) REFERENCES audit_run(run_id) ON DELETE RESTRICT,
   CONSTRAINT chk_ingest_status CHECK (status IN ('retryable','waiting_dependency','dead_letter','resolved')),
   CONSTRAINT chk_ingest_source CHECK (source_class='P')
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 ```
 
 以下仍是同一份已退役的历史 DDL 续段，仅供字段追溯，不得执行。
@@ -666,7 +666,7 @@ CREATE TABLE audit_agent_task (
   CONSTRAINT chk_task_status CHECK (status IN ('queued','running','succeeded','failed','discarded','deferred')),
   CONSTRAINT chk_task_cost CHECK ((cost_amount IS NULL AND cost_currency IS NULL) OR (cost_amount IS NOT NULL AND cost_amount>=0 AND cost_currency IS NOT NULL)),
   CONSTRAINT chk_task_source CHECK (source_class IN ('S','O','P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 ALTER TABLE audit_event
   ADD CONSTRAINT fk_event_task FOREIGN KEY (agent_task_id) REFERENCES audit_agent_task(task_id) ON DELETE RESTRICT;
@@ -702,7 +702,7 @@ CREATE TABLE audit_tool_execution (
   CONSTRAINT fk_tool_output FOREIGN KEY (output_payload_id) REFERENCES audit_payload(payload_id) ON DELETE RESTRICT,
   CONSTRAINT chk_tool_status CHECK (status IN ('planned','running','succeeded','failed','blocked','skipped')),
   CONSTRAINT chk_tool_source CHECK (source_class IN ('S','O','P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_artifact (
   artifact_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -723,7 +723,7 @@ CREATE TABLE audit_artifact (
   CONSTRAINT fk_artifact_owner FOREIGN KEY (owner_task_id) REFERENCES audit_agent_task(task_id) ON DELETE RESTRICT,
   CONSTRAINT chk_artifact_status CHECK (promotion_status IN ('declared','promoted','rejected','discarded')),
   CONSTRAINT chk_artifact_source CHECK (source_class IN ('S','O','P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_evidence (
   evidence_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -751,7 +751,7 @@ CREATE TABLE audit_evidence (
   CONSTRAINT chk_evidence_lines CHECK ((start_line IS NULL AND end_line IS NULL) OR (start_line >= 1 AND end_line >= start_line)),
   CONSTRAINT chk_evidence_locator CHECK (repo_path IS NOT NULL OR artifact_id IS NOT NULL OR tool_execution_id IS NOT NULL OR payload_id IS NOT NULL),
   CONSTRAINT chk_evidence_source CHECK (source_class IN ('S','O','P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_recon_fact (
   recon_fact_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -776,7 +776,7 @@ CREATE TABLE audit_recon_fact (
   CONSTRAINT chk_recon_fact_kind CHECK (fact_kind IN ('source_fact','inference','unknown')),
   CONSTRAINT chk_recon_strength CHECK (evidence_strength IN ('direct','corroborated','indirect','none')),
   CONSTRAINT chk_recon_source CHECK (source_class IN ('S','O','P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_architecture_snapshot (
   architecture_snapshot_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -793,7 +793,7 @@ CREATE TABLE audit_architecture_snapshot (
   CONSTRAINT fk_arch_payload FOREIGN KEY (payload_id) REFERENCES audit_payload(payload_id) ON DELETE RESTRICT,
   CONSTRAINT fk_arch_task FOREIGN KEY (generated_by_task_id) REFERENCES audit_agent_task(task_id) ON DELETE RESTRICT,
   CONSTRAINT chk_arch_source CHECK (source_class IN ('S','O','P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_surface (
   surface_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -811,7 +811,7 @@ CREATE TABLE audit_surface (
   CONSTRAINT fk_surface_run FOREIGN KEY (run_id) REFERENCES audit_run(run_id) ON DELETE RESTRICT,
   CONSTRAINT fk_surface_fact FOREIGN KEY (source_fact_id) REFERENCES audit_recon_fact(recon_fact_id) ON DELETE RESTRICT,
   CONSTRAINT chk_surface_source CHECK (source_class IN ('S','O','P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_trust_boundary (
   boundary_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -832,7 +832,7 @@ CREATE TABLE audit_trust_boundary (
   CONSTRAINT fk_boundary_run FOREIGN KEY (run_id) REFERENCES audit_run(run_id) ON DELETE RESTRICT,
   CONSTRAINT fk_boundary_fact FOREIGN KEY (source_fact_id) REFERENCES audit_recon_fact(recon_fact_id) ON DELETE RESTRICT,
   CONSTRAINT chk_boundary_source CHECK (source_class IN ('S','O','P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_coverage_unit (
   coverage_unit_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -864,7 +864,7 @@ CREATE TABLE audit_coverage_unit (
   CONSTRAINT fk_coverage_owner FOREIGN KEY (owner_task_id) REFERENCES audit_agent_task(task_id) ON DELETE RESTRICT,
   CONSTRAINT chk_coverage_status CHECK (status IN ('planned','in_progress','blocked','covered','candidate','not_applicable','out_of_scope','deferred')),
   CONSTRAINT chk_coverage_source CHECK (source_class IN ('S','O','P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_coverage_block (
   coverage_block_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -881,7 +881,7 @@ CREATE TABLE audit_coverage_block (
   CONSTRAINT fk_block_unit FOREIGN KEY (coverage_unit_id) REFERENCES audit_coverage_unit(coverage_unit_id) ON DELETE RESTRICT,
   CONSTRAINT chk_block_kind CHECK (block_kind IN ('ordinary','companion_core','companion_class','companion_moves','companion_validation')),
   CONSTRAINT chk_block_source CHECK (source_class IN ('S','O','P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_coverage_attempt (
   coverage_attempt_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -900,7 +900,7 @@ CREATE TABLE audit_coverage_attempt (
   CONSTRAINT fk_attempt_payload FOREIGN KEY (snapshot_payload_id) REFERENCES audit_payload(payload_id) ON DELETE RESTRICT,
   CONSTRAINT chk_attempt_status CHECK (status IN ('blocked','covered','candidate')),
   CONSTRAINT chk_attempt_source CHECK (source_class IN ('S','O','P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_check (
   check_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -923,7 +923,7 @@ CREATE TABLE audit_check (
   CONSTRAINT chk_check_method CHECK (method IN ('source','local')),
   CONSTRAINT chk_check_artifact CHECK ((method='source' AND artifact_id IS NULL) OR (method='local' AND artifact_id IS NOT NULL)),
   CONSTRAINT chk_check_source CHECK (source_class IN ('S','O','P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 ```
 
 ```text
@@ -951,7 +951,7 @@ CREATE TABLE audit_hypothesis (
   CONSTRAINT chk_hypothesis_status CHECK (status IN ('proposed','investigating','candidate','confirmed','rejected','needs_validation','abandoned','superseded','merged','split')),
   CONSTRAINT chk_hypothesis_relation CHECK (relation_kind IS NULL OR relation_kind IN ('supersedes','merged_into','split_from','alternative_to')),
   CONSTRAINT chk_hypothesis_source CHECK (source_class IN ('S','O','P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_hypothesis_version (
   hypothesis_version_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -980,7 +980,7 @@ CREATE TABLE audit_hypothesis_version (
   CONSTRAINT fk_hv_hypothesis FOREIGN KEY (hypothesis_id) REFERENCES audit_hypothesis(hypothesis_id) ON DELETE RESTRICT,
   CONSTRAINT fk_hv_author FOREIGN KEY (author_task_id) REFERENCES audit_agent_task(task_id) ON DELETE RESTRICT,
   CONSTRAINT chk_hv_source CHECK (source_class IN ('S','O','P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 ALTER TABLE audit_hypothesis
   ADD CONSTRAINT fk_hypothesis_current_version FOREIGN KEY (hypothesis_id, current_version_id) REFERENCES audit_hypothesis_version(hypothesis_id, hypothesis_version_id) ON DELETE RESTRICT;
@@ -1001,7 +1001,7 @@ CREATE TABLE audit_hypothesis_evidence (
   CONSTRAINT chk_he_relation CHECK (relation_kind IN ('supports','refutes','context','unknown')),
   CONSTRAINT chk_he_weight CHECK (weight IS NULL OR (weight BETWEEN 0 AND 1)),
   CONSTRAINT chk_he_source CHECK (source_class IN ('S','O','P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_hypothesis_score (
   hypothesis_score_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -1042,7 +1042,7 @@ CREATE TABLE audit_hypothesis_score (
   CONSTRAINT chk_hs_cost_unit CHECK (validation_cost_unit IN ('normalized','milliseconds','agent_calls','tokens','currency')),
   CONSTRAINT chk_hs_components CHECK ((estimated_duration_ms IS NULL OR estimated_duration_ms>=0) AND (estimated_agent_calls IS NULL OR estimated_agent_calls>=0)),
   CONSTRAINT chk_hs_source CHECK (source_class IN ('S','O','P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_attack_plan (
   attack_plan_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -1063,7 +1063,7 @@ CREATE TABLE audit_attack_plan (
   CONSTRAINT chk_plan_mode CHECK (plan_mode IN ('source_only','bounded_local','owner_observed','mixed')),
   CONSTRAINT chk_plan_status CHECK (status IN ('draft','approved','running','completed','blocked','abandoned')),
   CONSTRAINT chk_plan_source CHECK (source_class IN ('S','O','P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_attack_step (
   attack_step_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -1083,7 +1083,7 @@ CREATE TABLE audit_attack_step (
   CONSTRAINT fk_step_plan FOREIGN KEY (attack_plan_id) REFERENCES audit_attack_plan(attack_plan_id) ON DELETE RESTRICT,
   CONSTRAINT chk_step_status CHECK (status IN ('planned','running','succeeded','failed','blocked','skipped')),
   CONSTRAINT chk_step_source CHECK (source_class IN ('S','O','P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_attack_execution (
   attack_execution_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -1111,7 +1111,7 @@ CREATE TABLE audit_attack_execution (
   CONSTRAINT chk_execution_mode CHECK (execution_mode IN ('source_only','local','not_executed')),
   CONSTRAINT chk_execution_status CHECK (status IN ('running','succeeded','failed','blocked','skipped')),
   CONSTRAINT chk_execution_source CHECK (source_class IN ('S','O','P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_candidate (
   candidate_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -1130,7 +1130,7 @@ CREATE TABLE audit_candidate (
   CONSTRAINT fk_candidate_payload FOREIGN KEY (consolidated_payload_id) REFERENCES audit_payload(payload_id) ON DELETE RESTRICT,
   CONSTRAINT chk_candidate_status CHECK (status IN ('proposed','queued_for_validation','validating','decided','unvalidated','discarded')),
   CONSTRAINT chk_candidate_source CHECK (source_class IN ('S','O','P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_candidate_observation (
   candidate_observation_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -1153,7 +1153,7 @@ CREATE TABLE audit_candidate_observation (
   CONSTRAINT fk_co_payload FOREIGN KEY (payload_id) REFERENCES audit_payload(payload_id) ON DELETE RESTRICT,
   CONSTRAINT chk_co_verdict CHECK (proposed_verdict IN ('confirmed','needs_validation')),
   CONSTRAINT chk_co_source CHECK (source_class IN ('O','P'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_candidate_hypothesis (
   candidate_hypothesis_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -1169,7 +1169,7 @@ CREATE TABLE audit_candidate_hypothesis (
   CONSTRAINT fk_ch_hv FOREIGN KEY (hypothesis_version_id) REFERENCES audit_hypothesis_version(hypothesis_version_id) ON DELETE RESTRICT,
   CONSTRAINT chk_ch_relation CHECK (relation_kind IN ('origin','supports','alternative','merged')),
   CONSTRAINT chk_ch_source CHECK (source_class='P')
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_candidate_coverage (
   candidate_coverage_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -1184,7 +1184,7 @@ CREATE TABLE audit_candidate_coverage (
   CONSTRAINT fk_cc_coverage FOREIGN KEY (coverage_unit_id) REFERENCES audit_coverage_unit(coverage_unit_id) ON DELETE RESTRICT,
   CONSTRAINT chk_cc_relation CHECK (relation_kind IN ('origin','affected','supporting','duplicate')),
   CONSTRAINT chk_cc_source CHECK (source_class='P')
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_validation (
   validation_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -1209,7 +1209,7 @@ CREATE TABLE audit_validation (
   CONSTRAINT chk_validation_independence CHECK (independence_status IN ('passed','failed','unavailable')),
   CONSTRAINT chk_validation_status CHECK (status IN ('queued','running','succeeded','failed','discarded','deferred')),
   CONSTRAINT chk_validation_source CHECK (source_class IN ('S','O','P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_validation_observation (
   validation_observation_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -1228,7 +1228,7 @@ CREATE TABLE audit_validation_observation (
   CONSTRAINT fk_vo_evidence FOREIGN KEY (evidence_id) REFERENCES audit_evidence(evidence_id) ON DELETE RESTRICT,
   CONSTRAINT chk_vo_relation CHECK (relation_to_claim IN ('supports','refutes','neutral','unresolved')),
   CONSTRAINT chk_vo_source CHECK (source_class IN ('S','O','P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_decision (
   decision_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -1249,7 +1249,7 @@ CREATE TABLE audit_decision (
   CONSTRAINT fk_decision_supersedes FOREIGN KEY (supersedes_decision_id) REFERENCES audit_decision(decision_id) ON DELETE RESTRICT,
   CONSTRAINT chk_decision_value CHECK (decision IN ('confirmed','needs_validation','rejected','verified','replace')),
   CONSTRAINT chk_decision_source CHECK (source_class IN ('S','O','P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 ```
 
 ```text
@@ -1276,7 +1276,7 @@ CREATE TABLE audit_critic_review (
   CONSTRAINT chk_critic_kind CHECK (critic_kind IN ('post_wave','final_clean','quick_final')),
   CONSTRAINT chk_critic_status CHECK (status IN ('running','succeeded','failed','discarded','deferred')),
   CONSTRAINT chk_critic_source CHECK (source_class IN ('S','O','P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_critic_item (
   critic_item_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -1299,7 +1299,7 @@ CREATE TABLE audit_critic_item (
   CONSTRAINT chk_ci_kind CHECK (item_kind IN ('missing_unit','reassign','weak_check','unsupported_closure','out_of_scope_gap')),
   CONSTRAINT chk_ci_disposition CHECK (disposition IN ('queued','reassigned','deferred','out_of_scope','rejected')),
   CONSTRAINT chk_ci_source CHECK (source_class IN ('S','O','P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_finding (
   finding_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -1321,7 +1321,7 @@ CREATE TABLE audit_finding (
   CONSTRAINT chk_finding_verdict CHECK (current_verdict IN ('confirmed','needs_validation','rejected')),
   CONSTRAINT chk_finding_status CHECK (status IN ('draft','independently_decided','final_verified','replaced','removed')),
   CONSTRAINT chk_finding_source CHECK (source_class IN ('S','O','P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_finding_revision (
   finding_revision_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -1353,7 +1353,7 @@ CREATE TABLE audit_finding_revision (
   CONSTRAINT chk_fr_confidence CHECK (confidence_score IS NULL OR confidence_score IN ('low','medium','high')),
   CONSTRAINT chk_fr_status CHECK (status IN ('draft','independently_decided','final_verified','replaced','removed')),
   CONSTRAINT chk_fr_source CHECK (source_class IN ('S','O','P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 ALTER TABLE audit_finding
   ADD CONSTRAINT fk_finding_current_revision FOREIGN KEY (finding_id, current_revision_id) REFERENCES audit_finding_revision(finding_id, finding_revision_id) ON DELETE RESTRICT;
@@ -1373,7 +1373,7 @@ CREATE TABLE audit_finding_evidence (
   CONSTRAINT fk_fe_evidence FOREIGN KEY (evidence_id) REFERENCES audit_evidence(evidence_id) ON DELETE RESTRICT,
   CONSTRAINT chk_fe_relation CHECK (relation_kind IN ('trace','root_cause','execution','blocker','refutation','context')),
   CONSTRAINT chk_fe_source CHECK (source_class IN ('S','O','P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_finding_coverage (
   finding_coverage_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -1390,7 +1390,7 @@ CREATE TABLE audit_finding_coverage (
   CONSTRAINT fk_fc_coverage FOREIGN KEY (coverage_unit_id) REFERENCES audit_coverage_unit(coverage_unit_id) ON DELETE RESTRICT,
   CONSTRAINT chk_fc_relation CHECK (relation_kind IN ('origin','affected','supporting')),
   CONSTRAINT chk_fc_source CHECK (source_class='P')
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_validator_run (
   validator_run_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -1414,7 +1414,7 @@ CREATE TABLE audit_validator_run (
   CONSTRAINT fk_validator_output FOREIGN KEY (output_payload_id) REFERENCES audit_payload(payload_id) ON DELETE RESTRICT,
   CONSTRAINT chk_validator_status CHECK (status IN ('pass','fail','blocked')),
   CONSTRAINT chk_validator_source CHECK (source_class IN ('S','O','P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_report (
   report_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -1435,7 +1435,7 @@ CREATE TABLE audit_report (
   CONSTRAINT chk_report_kind CHECK (report_kind IN ('REPORT','FINDINGS_DETAIL','NEEDS_VALIDATION','RUN_METADATA','ARCHITECTURE','COVERAGE_LEDGER','FINDINGS_JSON')),
   CONSTRAINT chk_report_status CHECK (status IN ('draft','final','partial','superseded')),
   CONSTRAINT chk_report_source CHECK (source_class IN ('S','O','P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_metric_value (
   metric_value_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -1461,7 +1461,7 @@ CREATE TABLE audit_metric_value (
   CONSTRAINT chk_metric_value CHECK ((numeric_value IS NULL) <> (text_value IS NULL)),
   CONSTRAINT chk_metric_basis CHECK (ground_truth_basis IN ('internal_verifier','human_adjudication','none')),
   CONSTRAINT chk_metric_source CHECK (source_class='D')
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE audit_human_adjudication (
   adjudication_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
@@ -1489,7 +1489,7 @@ CREATE TABLE audit_human_adjudication (
   CONSTRAINT chk_adjudication_subject CHECK ((hypothesis_id IS NOT NULL) + (candidate_id IS NOT NULL) + (finding_id IS NOT NULL) = 1),
   CONSTRAINT chk_adjudication_label CHECK (label IN ('exact_match','partial_match','wrong_hypothesis','unresolved')),
   CONSTRAINT chk_adjudication_source CHECK (source_class IN ('P','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 INSERT INTO audit_schema_version
   (version, ddl_sha256, description, schema_version, applied_at, source_class)
@@ -1600,10 +1600,10 @@ LEFT JOIN audit_human_adjudication ha ON ha.adjudication_id=(
 
 1. 已完成：生成 `1.3.0-core-draft` 候选 DDL，且不从第 6 节直接复制执行历史 `1.1.0-draft`。
 2. 已完成：静态验证候选 DDL 恰好包含 36 张核心表，且 15 张延期表未进入迁移；项目远程 8.0.26 已只读解析 36 个 `CREATE TABLE` 和 4 个 `ALTER TABLE`。
-3. 待完成：用户明确批准后，直接在项目远程 `ai_security` 执行候选 DDL，并完成视图、外键、CHECK、权限和合成数据验收；不以本地 5.7 结果代替。
+3. 已完成：直接在项目远程 `ai_security` 创建 36 张核心表并完成排序规则迁移；视图、schema seed、权限和合成数据验收仍待单独授权与执行；不以本地 5.7 结果代替。
 4. 执行 FK/CHECK/视图回归、乱序重放、重复投递、半行 Outbox、CAS 冲突与脱敏失败测试。
 5. 以最小权限账号运行权限验收；任何 `DDL/GRANT/DELETE` 对运行时 Writer 都必须失败。
 6. 完成容量基线：每 run 事件数、payload 字节、月增长、索引放大、保留清理窗口和分区阈值。
 
-本模型是逻辑实施基线；契约包中的候选 DDL 是唯一可验证的执行候选；第 6 节历史 DDL 不是执行基线。当前 Skill 尚未产生这些表或字段，远程 `ai_security` 中仍有 0 张 `audit_*` 表。
+本模型是逻辑实施基线；契约包中的 DDL 是唯一可验证的执行候选；第 6 节历史 DDL 不是执行基线。当前 Skill 尚未产生这些表或字段，远程 `ai_security` 中已有 36 张 `audit_*` 核心表，均使用 `utf8mb4_general_ci`。
 

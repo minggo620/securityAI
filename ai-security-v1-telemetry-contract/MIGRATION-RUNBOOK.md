@@ -3,11 +3,11 @@
 ## 当前结论
 
 - 目标远程数据库已只读确认是 MySQL 8.0.26。
-- `ai_security` 当前没有 `audit_*` 表。
+- `ai_security` 已有 36 张 `audit_*` 核心表，表和 utf8mb4 文本列均为 `utf8mb4_general_ci`。
 - 当前配置账号权限过高，不能作为运行时 Writer。
 - 远程连接虽协商 TLS 1.3，但 `VERIFY_IDENTITY` 尚因可信 CA 缺失而失败。
-- 远程 8.0.26 已通过只读 `PREPARE/DEALLOCATE` 解析 36 个 `CREATE TABLE` 和 4 个 `ALTER TABLE`；未执行任何候选 DDL。视图、seed 和约束行为仍未验证。
-- 本文件不授权任何 DDL；执行建表需要用户针对目标、版本和操作再次明确授权。
+- 远程 8.0.26 已通过只读 `PREPARE/DEALLOCATE` 解析 36 个 `CREATE TABLE` 和 4 个 `ALTER TABLE`；核心表 DDL 和排序规则迁移已执行。视图、seed 和约束行为仍未全部验证。
+- 本文件不授权任何后续 DDL；补齐视图或 seed 需要用户针对目标、版本和操作再次明确授权。
 
 ## A. 项目远程数据库正式执行前检查
 
@@ -18,7 +18,8 @@
 ```sql
 SELECT VERSION(), @@character_set_server, @@collation_server, @@sql_mode,
        @@lower_case_table_names, @@innodb_strict_mode,
-       @@explicit_defaults_for_timestamp, @@max_allowed_packet;
+       @@explicit_defaults_for_timestamp, @@max_allowed_packet,
+       @@character_set_database, @@collation_database;
 ```
 
 期望：
@@ -31,6 +32,8 @@ lower_case_table_names        0
 innodb_strict_mode            1
 explicit_defaults_for_timestamp 1
 max_allowed_packet            >= 5242880
+character_set_database        utf8mb4
+collation_database            utf8mb4_general_ci
 ```
 
 执行规则：
@@ -39,7 +42,7 @@ max_allowed_packet            >= 5242880
 2. 使用受保护 defaults file；命令行、日志和文档不得出现密码。
 3. 客户端强制 `VERIFY_IDENTITY`，提供可信 CA 和与证书匹配的主机名。
 4. 不使用 `--force`，不关闭 `foreign_key_checks`。
-5. 执行 `001_ai_security_core_schema.sql`；任意错误立即停止。
+5. 对后续变更执行精确 SQL；任意错误立即停止。
 6. DDL 自动提交，失败时不得盲目重跑；保留失败现场，按精确变更单和恢复方案处理。
 
 ## B. 执行后验收 SQL
@@ -69,10 +72,10 @@ FROM audit_schema_version;
 必须满足：
 
 - 36 张 `audit_*` 基础表。
-- 2 个视图。
+- 当前核心表验收阶段为 0 个视图；若执行完整扩展，则必须为 2 个视图。
 - 表名与 `verify-contract.cjs` 的 allowlist 完全一致。
 - 不存在 15 张延期表。
-- `audit_schema_version.version=1.3.0-core-draft`。
+- 当前 schema seed 行数为 0；若执行完整扩展，则必须存在 `audit_schema_version.version=1.3.0-core-draft`。
 - CHECK 约束在 MySQL 8.0.26 实际拒绝非法 telemetry mode、非法 verdict 和错误人工标签组合。
 
 ## C. 最小行为测试
@@ -96,10 +99,10 @@ FROM audit_schema_version;
 
 只有 A–C 全部通过后，才准备远程变更：
 
-1. 重新只读确认远程仍无 `audit_*` 表；如果不为零，停止并做 schema reconciliation。
+1. 重新只读确认远程已有 36 张 `audit_*` 表且排序规则统一为 `utf8mb4_general_ci`；如果不一致，停止并做 schema reconciliation。
 2. 固化 DDL 文件 SHA-256、生成器 SHA-256、四个 JSON 契约 SHA-256。
-3. 形成变更单：目标数据库、36 张表、2 个视图、预计锁影响、恢复方案。
-4. 因当前无 `audit_*` 表，恢复方案是保留失败现场并由用户另行批准精确 DROP；不得自动清理。
+3. 如果补齐视图或 seed，形成变更单：目标数据库、对象清单、预计锁影响、恢复方案。
+4. 不得自动 DROP 已有核心表；失败现场保留，由用户另行批准精确恢复操作。
 5. 用户必须在执行前明确批准远程 DDL。
 6. 执行后运行 B 节验收，并保存不含凭据的结果。
 

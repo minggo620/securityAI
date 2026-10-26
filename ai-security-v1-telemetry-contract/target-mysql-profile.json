@@ -1,5 +1,5 @@
 {
-  "observed_at": "2026-10-26T20:08:36+08:00",
+  "observed_at": "2026-10-26T20:54:04+08:00",
   "observation_mode": "read_only",
   "database": "ai_security",
   "server": {
@@ -32,10 +32,16 @@
     "negotiated_tls_version": "TLSv1.3",
     "negotiated_tls_cipher": "TLS_AES_256_GCM_SHA384",
     "verify_identity_result": "blocked_missing_trusted_ca",
-    "required_writer_collation": "utf8mb4_0900_ai_ci"
+    "required_writer_collation": "utf8mb4_general_ci"
   },
   "schema_observation": {
-    "existing_audit_table_count": 0
+    "database_character_set": "utf8mb4",
+    "database_collation": "utf8mb4_general_ci",
+    "existing_audit_table_count": 36,
+    "audit_table_collation": "utf8mb4_general_ci",
+    "audit_view_count": 0,
+    "schema_seed_row_count": 0,
+    "migration_status": "core_tables_applied"
   },
   "read_only_parser_probe": {
     "result": "pass",
@@ -61,7 +67,6 @@
   "blockers_before_remote_writer": [
     "provide a trusted CA chain and a hostname that passes VERIFY_IDENTITY",
     "create a dedicated least-privilege runtime Writer account",
-      "execute the candidate DDL in the configured project ai_security MySQL 8.0.26 database after explicit DDL approval",
-    "obtain separate explicit authorization before any remote DDL"
+    "obtain separate explicit authorization before any future remote DDL"
   ]
 }
