@@ -3,9 +3,11 @@
 > 状态：实施指导设计；本文件不会触发数据库连接或写入。  
 > Skill 基线：`./ai-security-v1/`，清单 SHA-256 `bac04717601a140814c5963b6277c1d3ab8df6225184c0c49a8a4721103effa0`。  
 > 数据模型：[ai-security-v1-数据库逻辑模型.md](./ai-security-v1-数据库逻辑模型.md)。  
-> Schema 版本：`1.2.0-core-draft`。
+> Schema 版本：`1.3.0-core-draft`。
 
-> 架构复核说明：第一版只投影 35 张核心事务表。数据库租约、字段级通用 provenance、远程逐事件 checkpoint、ingest failure、surface/boundary、coverage block、Critic 专表、validator/report 专表和 metric 表均已移出核心迁移。对应信息分别保存在本地 telemetry 状态、事件 JSON、architecture/coverage payload、Agent/tool/artifact 以及后置研究分析中。
+> 机器可读前置契约：[`ai-security-v1-telemetry-contract/`](./ai-security-v1-telemetry-contract/README.md)。Skill 修改只能使用该目录中冻结的 event/config/agent schema 与 projection map，不得从本文自然语言猜测字段。
+
+> 架构复核说明：第一版只投影 36 张核心事务表。数据库租约、字段级通用 provenance、远程逐事件 checkpoint、ingest failure、surface/boundary、coverage block、Critic 专表、validator/report 专表和 metric 表均已移出核心迁移。对应信息分别保存在本地 telemetry 状态、事件 JSON、architecture/coverage payload、Agent/tool/artifact 以及后置研究分析中；新增 `audit_hypothesis_coverage` 保证一个假设关联多个覆盖单元时不丢失关系。
 
 ## 1. 目标与机制变化
 
@@ -63,7 +65,7 @@ Outbox 位于 Parent 共享输出目录，建议命名 `telemetry-outbox.jsonl`�
 
 ```json
 {
-  "schema_version": "1.2.0",
+  "schema_version": "1.3.0",
   "event_id": "01...ULID",
   "idempotency_key": "run/.../phase/P2/hypothesis/.../v1",
   "run_id": "01...ULID",
@@ -160,7 +162,7 @@ checkpoint 和 dead-letter 只保存在 Parent 独占的本地 telemetry 目录�
 
 ```json
 {
-  "schema_version": "1.2.0",
+  "schema_version": "1.3.0",
   "request_id": "01...ULID",
   "status": "inserted|duplicate_identical|pending|rejected|conflict",
   "run_id": "01...ULID",

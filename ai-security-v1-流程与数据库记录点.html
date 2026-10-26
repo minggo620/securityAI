@@ -18,7 +18,7 @@
   <header class="hero">
     <div><h1>ai-security-v1 流程与数据库记录点</h1><p>从完整审计启动，到侦察证据、漏洞假设、攻击计划、受限验证、独立裁决和研究指标。点击节点查看写入表、事务、幂等键和 Skill 依据。</p></div>
   </header>
-  <div class="notice"><strong>设计规范，不是运行日志。</strong> 第一版已由 49 表概念模型收敛为 35 张核心事务表；历史 1.1.0 DDL 已作废。完整审计默认 local + best_effort，远程 MySQL 同步需要单独明示授权。页面离线运行，不连接网络、API 或数据库。</div>
+  <div class="notice"><strong>设计规范，不是运行日志。</strong> 第一版已由 49 表概念模型收敛为 36 张核心事务表；历史 1.1.0 DDL 已作废。机器可读契约以 <a href="ai-security-v1-telemetry-contract/README.md">telemetry contract 1.3.0</a> 为准，项目远程 MySQL 8.0.26 是目标兼容基线；远程建表仍需单独明确 DDL 授权。页面离线运行，不连接网络、API 或数据库。</div>
   <section class="stats" aria-label="设计规模">
     <div class="stat"><b id="stat-points">—</b><span>流程记录点</span></div>
     <div class="stat"><b id="stat-tables">—</b><span>数据库表</span></div>
@@ -57,7 +57,7 @@
     </section>
     <aside class="detail" id="detail" aria-live="polite"></aside>
   </div>
-  <footer>基线清单 SHA-256：<code>bac04717601a140814c5963b6277c1d3ab8df6225184c0c49a8a4721103effa0</code><br><a href="ai-security-v1-数据库逻辑模型.md">数据库逻辑模型</a> · <a href="ai-security-v1-流程数据库写入方案.md">流程写入方案</a> · 来源路径均相对当前目录，便于整体分享。</footer>
+  <footer>基线清单 SHA-256：<code>bac04717601a140814c5963b6277c1d3ab8df6225184c0c49a8a4721103effa0</code><br><a href="ai-security-v1-数据库逻辑模型.md">数据库逻辑模型</a> · <a href="ai-security-v1-流程数据库写入方案.md">流程写入方案</a> · <a href="ai-security-v1-telemetry-contract/README.md">机器可读契约包</a> · <a href="ai-security-v1-telemetry-contract/CONTRACT-STATUS.md">当前验证状态</a> · 来源路径均相对当前目录，便于整体分享。</footer>
 </main>
 <script>
 const phases=['P0','P1','P2','P3','P4','P5','P6'];
@@ -105,7 +105,7 @@ const domains=[
 const tableDescriptions={
 audit_schema_version:'核心 schema 版本与经复核 DDL 哈希',audit_run:'一次审计及分离的 run/local/remote telemetry 状态',audit_run_scope:'包含或排除的审计范围',audit_phase_execution:'P0–P6 阶段的一次执行',audit_event:'不可变事件、source refs 与因果链',audit_payload:'脱敏原文或 JSON 快照',audit_agent_task:'一次 Parent/Recon/Hunter/Critic/Verifier 任务',audit_tool_execution:'一次真实工具、命令或 validator 执行',audit_artifact:'Parent 晋升的证据、核心文件或报告版本',audit_evidence:'源码、行为或 artifact 证据',audit_recon_fact:'侦察事实、推断或未知',audit_architecture_snapshot:'含 surface/boundary 数组的架构综合版本',audit_coverage_unit:'含攻击块选择的确定性覆盖单元',audit_coverage_attempt:'Critic reopen 后归档的旧尝试',audit_check:'source/local 检查及证据归属',audit_hypothesis:'稳定假设身份和当前状态',audit_hypothesis_version:'假设主张的不可变版本',audit_hypothesis_relation:'merge/split/supersede 的多对多关系',audit_hypothesis_evidence:'证据对假设的支持/反驳关系',audit_hypothesis_score:'冻结证据时点的验证前概率、价值、成本和优先级',audit_attack_plan:'针对某一假设版本的验证计划',audit_attack_step:'计划中的有序步骤',audit_attack_execution:'步骤实际执行、阻塞或跳过',audit_candidate_observation:'合并前每个 Hunter 的独立提案',audit_candidate:'进入独立验证的 root-cause 候选',audit_candidate_hypothesis:'candidate 与多个假设版本的关系',audit_candidate_coverage:'candidate 与多个 coverage unit 的关系',audit_validation:'绑定 candidate/hypothesis/revision 输入的一次独立验证',audit_validation_observation:'反例、控制、复现和未知观察',audit_decision:'不可变裁决或 replacement 决定',audit_finding:'稳定 fingerprint 的当前投影',audit_finding_revision:'schema-shaped 结果的不可变修订',audit_finding_evidence:'Finding revision 的证据关系',audit_finding_coverage:'finding revision 与 coverage unit 的结论血缘',audit_human_adjudication:'按 subject type 使用独立标签方案的专家标注'};
 const hypothesisStages=[
-['侦察事实','audit_recon_fact','代码事实、边界和未知'],['覆盖任务','audit_coverage_unit','明确要检查的入口×边界×攻击类'],['假设 v1','audit_hypothesis_version','攻击者+输入+不变量+预测结果'],['验证前评分','audit_hypothesis_score','概率、影响、信息增益、成本'],['攻击计划','audit_attack_plan','有序步骤和停止条件'],['实际动作','audit_attack_execution','source/local/blocked/skipped'],['独立验证','audit_validation','最强控制、反例和复现'],['最终裁决','audit_finding_revision','confirmed/NV/rejected'],['人工标注','audit_human_adjudication','研究真实标签，独立保存']
+['侦察事实','audit_recon_fact','代码事实、边界和未知'],['覆盖任务','audit_coverage_unit','明确要检查的入口×边界×攻击类'],['假设 v1','audit_hypothesis_version','攻击者+输入+不变量+预测结果'],['验证前评分（原skill没有，研究需要）','audit_hypothesis_score','概率、影响、信息增益、成本'],['攻击计划','audit_attack_plan','有序步骤和停止条件'],['实际动作','audit_attack_execution','source/local/blocked/skipped'],['独立验证','audit_validation','最强控制、反例和复现'],['最终裁决','audit_finding_revision','confirmed/NV/rejected'],['人工标注','audit_human_adjudication','研究真实标签，独立保存']
 ];
 const lineageData=[
 ['侦察事实','audit_recon_fact','为 coverage 与假设提供可引用依据'],['覆盖单元','audit_coverage_unit','定义任务空间和 Agent owner'],['假设版本','audit_hypothesis_version','把经验推断变成可反驳主张'],['攻击/验证步骤','audit_attack_execution','记录计划与实际行为差异'],['候选观察','audit_candidate_observation','先保存独立提案，再由 Parent 合并'],['候选','audit_candidate','通过候选门的 root cause'],['独立观察','audit_validation_observation','支持、反驳或保持未决'],['裁决','audit_decision','形成三种 schema-shaped 结论'],['Finding 修订','audit_finding_revision','保留替换历史'],['报告与研究数据','audit_artifact / audit_human_adjudication','交付物入 artifact，指标后置重算']

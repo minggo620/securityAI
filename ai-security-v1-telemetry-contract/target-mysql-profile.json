@@ -1,0 +1,67 @@
+{
+  "observed_at": "2026-10-26T20:08:36+08:00",
+  "observation_mode": "read_only",
+  "database": "ai_security",
+  "server": {
+    "version": "8.0.26",
+    "version_comment": "Source distribution",
+    "character_set_server": "utf8mb4",
+    "collation_server": "utf8mb4_0900_ai_ci",
+    "sql_mode": [
+      "ONLY_FULL_GROUP_BY",
+      "STRICT_TRANS_TABLES",
+      "NO_ZERO_IN_DATE",
+      "NO_ZERO_DATE",
+      "ERROR_FOR_DIVISION_BY_ZERO",
+      "NO_ENGINE_SUBSTITUTION"
+    ],
+    "lower_case_table_names": 0,
+    "innodb_strict_mode": true,
+    "explicit_defaults_for_timestamp": true,
+    "time_zone": "SYSTEM",
+    "transaction_isolation": "REPEATABLE-READ",
+    "max_allowed_packet": 67108864,
+    "innodb_file_per_table": true,
+    "local_infile": false,
+    "require_secure_transport": false,
+    "tls_versions": ["TLSv1", "TLSv1.1", "TLSv1.2", "TLSv1.3"]
+  },
+  "connection_observation": {
+    "character_set_connection": "utf8mb4",
+    "collation_connection": "utf8mb4_general_ci",
+    "negotiated_tls_version": "TLSv1.3",
+    "negotiated_tls_cipher": "TLS_AES_256_GCM_SHA384",
+    "verify_identity_result": "blocked_missing_trusted_ca",
+    "required_writer_collation": "utf8mb4_0900_ai_ci"
+  },
+  "schema_observation": {
+    "existing_audit_table_count": 0
+  },
+  "read_only_parser_probe": {
+    "result": "pass",
+      "statements_parsed": 40,
+    "statement_classes": {
+      "create_table": 36,
+      "alter_table": 4
+    },
+    "not_covered": [
+      "2 CREATE VIEW statements require the referenced tables to exist",
+      "1 schema-version seed requires audit_schema_version to exist",
+      "foreign-key and CHECK runtime behavior",
+      "full migration execution"
+    ],
+    "mutation_performed": false
+  },
+  "account_observation": {
+    "privilege_class": "all_privileges_on_ai_security_with_grant_option",
+    "acceptable_for_migration": "requires_explicit_ddl_authorization",
+    "acceptable_for_runtime_writer": false,
+    "required_runtime_replacement": "dedicated_least_privilege_writer"
+  },
+  "blockers_before_remote_writer": [
+    "provide a trusted CA chain and a hostname that passes VERIFY_IDENTITY",
+    "create a dedicated least-privilege runtime Writer account",
+      "execute the candidate DDL in the configured project ai_security MySQL 8.0.26 database after explicit DDL approval",
+    "obtain separate explicit authorization before any remote DDL"
+  ]
+}

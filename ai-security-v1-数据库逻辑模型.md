@@ -4,15 +4,17 @@
 > 分析对象：`./ai-security-v1/`。  
 > Skill 基线清单 SHA-256：`bac04717601a140814c5963b6277c1d3ab8df6225184c0c49a8a4721103effa0`（算法见第 12 节）。  
 > 目标环境：MySQL 8.0.26，数据库 `ai_security`，新对象统一使用 `audit_` 前缀；不修改现有 `test` 表。  
-> Schema 版本：`1.2.0-core-draft`。
+> Schema 版本：`1.3.0-core-draft`。
+
+> 可执行候选契约包：[`ai-security-v1-telemetry-contract/`](./ai-security-v1-telemetry-contract/README.md)。其中的 `001_ai_security_core_schema.sql` 由生成器产生并通过静态一致性检查和远程 MySQL 8.0.26 非执行解析；正式建表使用项目远程数据库，并以用户单独明确 DDL 授权为前提。
 
 ## 0. 架构复核结论与第一版收敛范围
 
 原 `1.1.0-draft` 将运行状态库、事件存储、规范化业务投影、Writer 分布式协调和研究分析仓库一次性建成 49 张表、675 个字段、123 个外键。它可以作为长期概念目录，但不适合作为第一版直接部署：一个业务事件需要同步维护 payload、event、字段 provenance、专用投影和远程 checkpoint，故障组合会反向威胁 P1–P6 的稳定执行。
 
-`1.2.0-core-draft` 采用“核心事实库 + 可重放事件 + 后置研究分析”的边界：
+`1.3.0-core-draft` 采用“核心事实库 + 可重放事件 + 后置研究分析”的边界：
 
-- 第一版核心模型实现 35 张事务表；保留假设版本、验证前评分、攻击计划/执行、候选观察、独立验证、Finding 修订和人工标注。
+- 第一版核心模型实现 36 张事务表；保留假设版本与多覆盖单元关联、验证前评分、攻击计划/执行、候选观察、独立验证、Finding 修订和人工标注。
 - 派生指标不进入审计事务；通过带版本的离线查询或研究数据集重算。
 - 单 Parent/单 Writer 使用本地排他锁，不建设数据库租约和 fencing 系统。
 - Outbox checkpoint 与 dead-letter 仅保存在 Parent 独占的本地 telemetry 目录；MySQL 以 `audit_event` 幂等键证明已提交事件。
@@ -43,7 +45,7 @@ audit_metric_value
 
 这些需求分别由 run 初始化 payload、event source refs、本地 checkpoint/dead-letter、architecture snapshot、coverage JSON、Agent task/tool/artifact 和后置分析任务承担。只有出现可量化的查询、并发或性能需求后，才允许通过 expand migration 物化专表。
 
-第一版 35 张核心表清单：
+第一版 36 张核心表清单：
 
 | 域 | 核心表 |
 | --- | --- |
@@ -98,7 +100,7 @@ audit_metric_value
 
 ## 2. 总体模型
 
-本节拓扑保留长期概念关系，包含第 0 节明确延期的物化表；第一版实施范围必须以第 0 节的 35 表清单为准。延期对象在核心版本中由 event/payload/artifact 或本地 telemetry 文件承担。
+本节拓扑保留长期概念关系，包含第 0 节明确延期的物化表；第一版实施范围必须以第 0 节的 36 表清单为准。延期对象在核心版本中由 event/payload/artifact 或本地 telemetry 文件承担。
 
 ```text
 audit_run
@@ -163,7 +165,7 @@ audit_run
 
 ## 4. 长期概念目录与核心映射
 
-本节保留原 49 表概念目录，便于说明长期字段语义；它不是第一版建表清单。第 0 节列出的 35 张表为 `core`，第 0 节移出的 15 张表为 `deferred`。任何迁移生成器都必须从 core allowlist 生成，不能遍历本节自动建表。
+本节保留原 49 表概念目录，便于说明长期字段语义；它不是第一版建表清单。第 0 节列出的 36 张表为 `core`，第 0 节移出的 15 张表为 `deferred`。任何迁移生成器都必须从 core allowlist 生成，不能遍历本节自动建表。
 
 ### 4.1 运行、事件与 payload
 
@@ -309,7 +311,7 @@ Finding revision: draft → independently_decided → final_verified | replaced 
 
 下方代码块是原 `1.1.0-draft` 的历史候选 DDL，仅用于追溯字段来源，**已经被第 0 节的收敛决策取代，不得复制执行，也不得作为迁移输入**。它仍包含被移出的 15 张表，以及旧的单关系、候选顺序和 P5 血缘问题。
 
-实施前必须从第 0–5 节的数据契约重新生成 `1.2.0-core-draft` DDL，并满足以下门禁：仅含 35 张核心表；包含双模式 telemetry 字段、可空 observation candidate、假设关系表、revision-bound validation 和 subject-specific adjudication；不含上述 15 张延期表。新 DDL在 MySQL 8.0.26 隔离库验证并替换本历史块之前，数据库实施阶段不得开始。
+`1.3.0-core-draft` 候选 DDL 已在 [`ai-security-v1-telemetry-contract/001_ai_security_core_schema.sql`](./ai-security-v1-telemetry-contract/001_ai_security_core_schema.sql) 生成，仅含 36 张核心表，并已通过静态契约检查与项目远程 MySQL 8.0.26 的 40 条非执行 `PREPARE` 解析。该结果不等于建表验收；真正建表时应直接使用项目远程数据库，并在用户明确批准该 DDL 后执行视图/FK/CHECK 行为测试和 Writer 权限验收。下方历史块不再需要、也不应“替换”；执行基线始终是版本化契约包。
 
 ```text
 -- ai-security-v1 telemetry schema 1.1.0-draft
@@ -1596,12 +1598,12 @@ LEFT JOIN audit_human_adjudication ha ON ha.adjudication_id=(
 
 ## 13. 实施前必须完成的验证
 
-1. 先生成新的 `1.2.0-core-draft` DDL；不得从第 6 节复制历史 `1.1.0-draft`。
-2. 新 DDL 必须恰好包含第 0 节定义的 35 张核心表，并证明被移出的 15 张表没有进入迁移。
-3. 在与目标一致的 MySQL 8.0.26 隔离库中实际执行新 DDL，不只做文本静态检查。
+1. 已完成：生成 `1.3.0-core-draft` 候选 DDL，且不从第 6 节直接复制执行历史 `1.1.0-draft`。
+2. 已完成：静态验证候选 DDL 恰好包含 36 张核心表，且 15 张延期表未进入迁移；项目远程 8.0.26 已只读解析 36 个 `CREATE TABLE` 和 4 个 `ALTER TABLE`。
+3. 待完成：用户明确批准后，直接在项目远程 `ai_security` 执行候选 DDL，并完成视图、外键、CHECK、权限和合成数据验收；不以本地 5.7 结果代替。
 4. 执行 FK/CHECK/视图回归、乱序重放、重复投递、半行 Outbox、CAS 冲突与脱敏失败测试。
 5. 以最小权限账号运行权限验收；任何 `DDL/GRANT/DELETE` 对运行时 Writer 都必须失败。
 6. 完成容量基线：每 run 事件数、payload 字节、月增长、索引放大、保留清理窗口和分区阈值。
 
-本模型是逻辑实施基线；第 6 节历史 DDL 不是执行基线。当前 Skill 尚未产生这些表或字段，DDL 也未在 `ai_security` 中执行。
+本模型是逻辑实施基线；契约包中的候选 DDL 是唯一可验证的执行候选；第 6 节历史 DDL 不是执行基线。当前 Skill 尚未产生这些表或字段，远程 `ai_security` 中仍有 0 张 `audit_*` 表。
 

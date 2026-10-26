@@ -4,7 +4,9 @@
 > 当前操作边界：本文件仅保存实施方案；尚未修改 Skill 契约、脚本、校验器或数据库，也未执行 DDL。  
 > 设计基线：`ai-security-v1` 当前版本及三份已完成的数据库与流程设计文档。
 
-> 架构复核修订：第一版数据库由原 49 表概念模型收敛为 35 张核心事务表。移除数据库租约、通用字段 provenance、远程逐事件 checkpoint/ingest failure、surface/boundary、coverage block、Critic、validator、report 和 metric 专表；这些能力分别由本地 telemetry、事件 JSON、architecture/coverage payload、Agent/tool/artifact 和后置研究任务承担。历史 `1.1.0-draft` DDL 已作废，实施时必须重新生成并验证 `1.2.0-core-draft`。
+> 架构复核修订：第一版数据库由原 49 表概念模型收敛为 36 张核心事务表。移除数据库租约、通用字段 provenance、远程逐事件 checkpoint/ingest failure、surface/boundary、coverage block、Critic、validator、report 和 metric 专表；这些能力分别由本地 telemetry、事件 JSON、architecture/coverage payload、Agent/tool/artifact 和后置研究任务承担。历史 `1.1.0-draft` DDL 已作废，实施时必须使用并验证 `1.3.0-core-draft`。
+
+> 前置契约包：[`ai-security-v1-telemetry-contract/`](./ai-security-v1-telemetry-contract/README.md)。数据库建表和 Skill 修改必须共同依赖该版本化目录；在项目远程 MySQL 8.0.26 的只读解析、TLS VERIFY_IDENTITY 和最小权限 Writer 方案完成前，不得启用远程 Writer。真正 DDL 执行需用户单独批准。
 
 ## 1. 目标与不可破坏的执行原则
 
@@ -231,7 +233,7 @@ uncovered
 - `telemetry-config-schema.json`：运行模式和失败策略。
 - `agent-result-schema.json`：Recon、Hunter、Critic、Verifier 和 Final Review 分支。
 - `telemetry-projection-map.json`：事件到表、字段、来源类别的确定性映射。
-- `telemetry-schema.sql`：与数据库模型文档一致的 MySQL 8.0 DDL 草案。
+- `ai-security-v1-telemetry-contract/001_ai_security_core_schema.sql`：与数据库模型一致的 MySQL 8.0.26 候选 DDL。
 
 DDL 文件默认只读，不由审计流程执行。
 
@@ -252,7 +254,7 @@ node scripts/audit-telemetry.cjs finalize-run ...
 
 ```json
 {
-  "schema_version": "1.2.0",
+  "schema_version": "1.3.0",
   "request_id": "...",
   "status": "inserted|duplicate_identical|pending|rejected|conflict",
   "run_id": "...",
@@ -510,9 +512,9 @@ payload
 
 ### 阶段 E：数据库 Writer
 
-- 从修订后的逻辑契约生成新的 `1.2.0-core-draft` DDL；禁止复用历史 49 表 DDL。
+- 复核已生成的 `ai-security-v1-telemetry-contract/001_ai_security_core_schema.sql`；禁止复用历史 49 表 DDL。
 - 在一次性 MySQL 8.0.26 测试实例应用 DDL。
-- 验证恰好 35 张核心表、外键、CHECK、索引和视图，并证明 15 张延期表未进入迁移。
+- 验证恰好 36 张核心表、外键、CHECK、索引和视图，并证明 15 张延期表未进入迁移。
 - 测试重放、回滚、去重、血缘和权限。
 
 通过条件：运行账号无法执行 DDL、DELETE、GRANT 或访问其他数据库。
@@ -566,7 +568,7 @@ payload
 只有同时满足以下条件，才可认为 Skill 修改完成：
 
 - 原有 65 项测试全部通过。
-- 官方 `quick_validate.py` 在隔离且具备 PyYAML 的环境通过。
+- 官方 `quick_validate.py` 在具备 PyYAML 的受控执行环境通过。
 - 新增 Telemetry、Outbox、脱敏、Agent Schema 和 Writer 测试全部通过。
 - 两个原有校验器的外部行为没有变化。
 - `report-schema.json` 的 Verdict 契约没有被 Telemetry 污染。
@@ -581,7 +583,7 @@ payload
 
 ## 13. 已锁定默认决策
 
-- Telemetry Schema 初始版本为 `1.2.0`；历史 `1.1.0-draft` 不得执行。
+- Telemetry Schema 初始版本为 `1.3.0`；历史 `1.1.0-draft` 不得执行。
 - 完整审计默认 `local + best_effort`。
 - 远程同步默认关闭。
 - required 模式只能显式启用。

@@ -1,0 +1,190 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-security-v1:agent-process-extension:1.3.0",
+  "title": "Value of the optional _process member added to an existing agent result",
+  "description": "This schema validates only the _process sidecar. The original Recon/Hunter/Critic/Verifier result remains authoritative and is stored separately. Parent-generated ULIDs are deliberately absent.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "result_type", "agent_id", "explicit_rationale", "evidence_refs", "observations"],
+  "properties": {
+    "schema_version": { "const": "1.3.0" },
+    "result_type": { "enum": ["recon", "hunter", "critic", "candidate_validation", "final_review"] },
+    "agent_id": { "$ref": "#/$defs/agentId" },
+    "explicit_rationale": { "type": "string", "minLength": 1, "maxLength": 20000 },
+    "evidence_refs": { "type": "array", "maxItems": 512, "items": { "$ref": "#/$defs/evidenceRef" } },
+    "recon_facts": { "type": "array", "maxItems": 4096, "items": { "$ref": "#/$defs/reconFact" } },
+    "hypotheses": { "type": "array", "maxItems": 1024, "items": { "$ref": "#/$defs/hypothesis" } },
+    "hypothesis_relations": { "type": "array", "maxItems": 2048, "items": { "$ref": "#/$defs/hypothesisRelation" } },
+    "attack_plans": { "type": "array", "maxItems": 1024, "items": { "$ref": "#/$defs/attackPlan" } },
+    "observations": { "type": "array", "maxItems": 4096, "items": { "$ref": "#/$defs/observation" } },
+    "decision_input": { "$ref": "#/$defs/decisionInput" },
+    "critic_review": { "$ref": "#/$defs/criticReview" }
+  },
+  "allOf": [
+    { "if": { "properties": { "result_type": { "const": "recon" } }, "required": ["result_type"] }, "then": { "required": ["recon_facts"] } },
+    { "if": { "properties": { "result_type": { "const": "hunter" } }, "required": ["result_type"] }, "then": { "required": ["hypotheses", "hypothesis_relations", "attack_plans"] } },
+    { "if": { "properties": { "result_type": { "const": "critic" } }, "required": ["result_type"] }, "then": { "required": ["critic_review"] } },
+    { "if": { "properties": { "result_type": { "enum": ["candidate_validation", "final_review"] } }, "required": ["result_type"] }, "then": { "required": ["decision_input"] } }
+  ],
+  "$defs": {
+    "agentId": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$", "not": { "pattern": "^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$" } },
+    "localKey": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-z0-9][a-z0-9._-]*$" },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "evidenceRef": {
+      "type": "object", "additionalProperties": false,
+      "required": ["ref_id", "fact_kind", "relative_path", "start_line", "end_line", "scope", "description", "strength"],
+      "properties": {
+        "ref_id": { "$ref": "#/$defs/localKey" },
+        "fact_kind": { "enum": ["source_fact", "inference", "unknown", "local_observation"] },
+        "relative_path": { "type": ["string", "null"], "maxLength": 4096 },
+        "start_line": { "type": ["integer", "null"], "minimum": 1 },
+        "end_line": { "type": ["integer", "null"], "minimum": 1 },
+        "scope": { "type": ["string", "null"], "maxLength": 512 },
+        "description": { "type": "string", "minLength": 1, "maxLength": 20000 },
+        "strength": { "enum": ["direct", "corroborated", "indirect", "none"] }
+      }
+    },
+    "reconFact": {
+      "type": "object", "additionalProperties": false,
+      "required": ["fact_id", "recon_kind", "fact_kind", "statement", "evidence_ref_ids", "evidence_strength", "unknown_reason"],
+      "properties": {
+        "fact_id": { "$ref": "#/$defs/localKey" },
+        "recon_kind": { "enum": ["product_stack", "principals_controls", "surfaces_sinks", "execution_visibility", "focused"] },
+        "fact_kind": { "enum": ["source_fact", "inference", "unknown"] },
+        "statement": { "type": "string", "minLength": 1, "maxLength": 20000 },
+        "evidence_ref_ids": { "type": "array", "maxItems": 256, "uniqueItems": true, "items": { "$ref": "#/$defs/localKey" } },
+        "evidence_strength": { "enum": ["direct", "corroborated", "indirect", "none"] },
+        "unknown_reason": { "type": ["string", "null"], "maxLength": 20000 }
+      }
+    },
+    "score": {
+      "type": "object", "additionalProperties": false,
+      "required": ["predicted_probability", "probability_rationale", "potential_impact", "coverage_value", "information_gain", "estimated_validation_cost", "cost_unit", "priority_score", "formula_name", "formula_version", "evidence_cutoff_ref_ids"],
+      "properties": {
+        "predicted_probability": { "type": "number", "minimum": 0, "maximum": 1 },
+        "probability_rationale": { "type": "string", "minLength": 1, "maxLength": 20000 },
+        "potential_impact": { "type": "number", "minimum": 0, "maximum": 1 },
+        "coverage_value": { "type": "number", "minimum": 0, "maximum": 1 },
+        "information_gain": { "type": "number", "minimum": 0, "maximum": 1 },
+        "estimated_validation_cost": { "type": "number", "minimum": 0 },
+        "cost_unit": { "enum": ["normalized", "milliseconds", "agent_calls", "tokens", "currency"] },
+        "estimated_duration_ms": { "type": ["integer", "null"], "minimum": 0 },
+        "estimated_agent_calls": { "type": ["integer", "null"], "minimum": 0 },
+        "estimated_token_count": { "type": ["integer", "null"], "minimum": 0 },
+        "priority_score": { "type": "number" },
+        "formula_name": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "formula_version": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "evidence_cutoff_ref_ids": { "type": "array", "minItems": 1, "maxItems": 512, "uniqueItems": true, "items": { "$ref": "#/$defs/localKey" } }
+      }
+    },
+    "hypothesis": {
+      "type": "object", "additionalProperties": false,
+      "required": ["hypothesis_key", "version", "primary_coverage_id", "coverage_ids", "attacker_principal", "attacker_capabilities", "controlled_input", "entrypoint", "security_invariant", "suspected_control_failure", "predicted_trace", "trust_boundary", "affected_resource", "predicted_result", "preconditions", "unknown_facts", "alternative_explanations", "evidence_refs", "score", "status", "revision_reason"],
+      "properties": {
+        "hypothesis_key": { "$ref": "#/$defs/localKey" },
+        "version": { "type": "integer", "minimum": 1 },
+        "primary_coverage_id": { "type": "string", "minLength": 1, "maxLength": 65536 },
+        "coverage_ids": { "type": "array", "minItems": 1, "maxItems": 256, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 65536 } },
+        "attacker_principal": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "attacker_capabilities": { "type": "array", "maxItems": 128, "items": { "type": "string", "minLength": 1, "maxLength": 4096 } },
+        "controlled_input": { "type": "string", "minLength": 1, "maxLength": 10000 },
+        "entrypoint": { "type": "string", "minLength": 1, "maxLength": 10000 },
+        "security_invariant": { "type": "string", "minLength": 1, "maxLength": 20000 },
+        "suspected_control_failure": { "type": "string", "minLength": 1, "maxLength": 20000 },
+        "predicted_trace": { "type": "array", "minItems": 1, "maxItems": 256, "items": { "type": "string", "minLength": 1, "maxLength": 4096 } },
+        "trust_boundary": { "type": "string", "minLength": 1, "maxLength": 10000 },
+        "affected_resource": { "type": "string", "minLength": 1, "maxLength": 10000 },
+        "predicted_result": { "type": "string", "minLength": 1, "maxLength": 20000 },
+        "preconditions": { "type": "array", "maxItems": 256, "items": { "type": "string", "minLength": 1, "maxLength": 4096 } },
+        "unknown_facts": { "type": "array", "maxItems": 256, "items": { "type": "string", "minLength": 1, "maxLength": 4096 } },
+        "alternative_explanations": { "type": "array", "maxItems": 256, "items": { "type": "string", "minLength": 1, "maxLength": 4096 } },
+        "evidence_refs": { "type": "array", "minItems": 1, "maxItems": 256, "uniqueItems": true, "items": { "$ref": "#/$defs/localKey" } },
+        "score": { "$ref": "#/$defs/score" },
+        "status": { "enum": ["proposed", "investigating", "candidate", "abandoned", "superseded", "merged", "split"] },
+        "revision_reason": { "type": ["string", "null"], "maxLength": 20000 }
+      }
+    },
+    "hypothesisRelation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["from_hypothesis_key", "to_hypothesis_key", "relation_kind", "rationale"],
+      "properties": {
+        "from_hypothesis_key": { "$ref": "#/$defs/localKey" },
+        "to_hypothesis_key": { "$ref": "#/$defs/localKey" },
+        "relation_kind": { "enum": ["supersedes", "merged_into", "split_from", "alternative_to"] },
+        "rationale": { "type": "string", "minLength": 1, "maxLength": 20000 }
+      }
+    },
+    "attackPlan": {
+      "type": "object", "additionalProperties": false,
+      "required": ["hypothesis_key", "plan_version", "mode", "objective", "stop_condition", "expected_boundary_result", "status", "steps"],
+      "properties": {
+        "hypothesis_key": { "$ref": "#/$defs/localKey" },
+        "plan_version": { "type": "integer", "minimum": 1 },
+        "mode": { "enum": ["source_only", "bounded_local", "owner_observed", "mixed"] },
+        "objective": { "type": "string", "minLength": 1, "maxLength": 20000 },
+        "stop_condition": { "type": "string", "minLength": 1, "maxLength": 20000 },
+        "expected_boundary_result": { "type": "string", "minLength": 1, "maxLength": 20000 },
+        "status": { "enum": ["draft", "ready", "running", "completed", "blocked", "abandoned"] },
+        "steps": {
+          "type": "array", "minItems": 1, "maxItems": 256,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["ordinal", "action_kind", "action", "precondition", "input_description", "expected_result", "planned_tool"],
+            "properties": {
+              "ordinal": { "type": "integer", "minimum": 1 },
+              "action_kind": { "enum": ["source_trace", "fixture", "build", "test", "process", "browser", "emulator", "policy_render", "other"] },
+              "action": { "type": "string", "minLength": 1, "maxLength": 20000 },
+              "precondition": { "type": "string", "minLength": 1, "maxLength": 20000 },
+              "input_description": { "type": "string", "minLength": 1, "maxLength": 20000 },
+              "expected_result": { "type": "string", "minLength": 1, "maxLength": 20000 },
+              "planned_tool": { "type": ["string", "null"], "maxLength": 128 }
+            }
+          }
+        }
+      }
+    },
+    "observation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["observation_id", "kind", "execution_mode", "status", "actual_input", "expected", "observed", "relation_to_claim", "evidence_refs", "blocker_reason"],
+      "properties": {
+        "observation_id": { "$ref": "#/$defs/localKey" },
+        "kind": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "coverage_id": { "type": ["string", "null"], "maxLength": 65536 },
+        "hypothesis_key": { "oneOf": [{ "$ref": "#/$defs/localKey" }, { "type": "null" }] },
+        "plan_version": { "type": ["integer", "null"], "minimum": 1 },
+        "step_ordinal": { "type": ["integer", "null"], "minimum": 1 },
+        "candidate_fingerprint": { "type": ["string", "null"], "maxLength": 4096 },
+        "execution_mode": { "enum": ["source_only", "local", "not_executed"] },
+        "status": { "enum": ["succeeded", "failed", "blocked", "skipped"] },
+        "actual_input": { "type": ["string", "null"], "maxLength": 20000 },
+        "expected": { "type": ["string", "null"], "maxLength": 20000 },
+        "observed": { "type": "string", "minLength": 1, "maxLength": 20000 },
+        "relation_to_claim": { "enum": ["supports", "refutes", "neutral", "unresolved"] },
+        "evidence_refs": { "type": "array", "maxItems": 256, "uniqueItems": true, "items": { "$ref": "#/$defs/localKey" } },
+        "blocker_reason": { "type": ["string", "null"], "maxLength": 20000 }
+      }
+    },
+    "decisionInput": {
+      "type": "object", "additionalProperties": false,
+      "required": ["candidate_fingerprint", "hypothesis_version_ref", "finding_revision_ref", "input_sha256", "method_summary", "strongest_control"],
+      "properties": {
+        "candidate_fingerprint": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "hypothesis_version_ref": { "type": ["string", "null"], "maxLength": 256 },
+        "finding_revision_ref": { "type": ["string", "null"], "maxLength": 256 },
+        "input_sha256": { "$ref": "#/$defs/sha256" },
+        "method_summary": { "type": "string", "minLength": 1, "maxLength": 20000 },
+        "strongest_control": { "type": ["string", "null"], "maxLength": 20000 }
+      }
+    },
+    "criticReview": {
+      "type": "object", "additionalProperties": false,
+      "required": ["proposed_missing_unit_count", "reassign_ids", "resolved_prior_leads", "stop_assessment"],
+      "properties": {
+        "proposed_missing_unit_count": { "type": "integer", "minimum": 0 },
+        "reassign_ids": { "type": "array", "maxItems": 4096, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 65536 } },
+        "resolved_prior_leads": { "type": "array", "maxItems": 4096, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 4096 } },
+        "stop_assessment": { "type": "boolean" }
+      }
+    }
+  }
+}

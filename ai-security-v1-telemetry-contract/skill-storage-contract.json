@@ -1,0 +1,212 @@
+{
+  "schema_version": "1.3.0",
+  "database_contract": "1.3.0-core-draft",
+  "policy": {
+    "full_snapshot_rule": "Every authoritative Skill JSON/Markdown artifact and every raw Agent core result is stored after redaction in audit_payload and, when it is a retained file, in audit_artifact. Normalized columns are query projections, not the only copy.",
+    "unknown_source_field": "reject_contract_version_and_do_not_guess",
+    "unknown_database_column": "reject_projection",
+    "payload_limit_bytes": 5242880,
+    "oversize_rule": "store metadata, original length and keyed fingerprint; do not silently truncate",
+    "hidden_reasoning": "forbidden"
+  },
+  "source_contracts": [
+    {
+      "id": "run_metadata",
+      "source": "SKILL.md:Full audit setup",
+      "required_fields": ["run_id", "repo", "target", "source_ref", "profile", "scope_paths", "budget", "execution_policy", "selected companion files", "prior-run paths", "shared-file owners", "run_status"],
+      "full_snapshot": ["audit_payload.content_json", "audit_artifact.content_sha256"],
+      "normalized": {
+        "run_id": ["audit_run.run_id"],
+        "repo": ["audit_run.repo"],
+        "target": ["audit_run.target_locator_redacted"],
+        "source_ref": ["audit_run.source_ref", "audit_run.worktree_dirty"],
+        "profile": ["audit_run.profile"],
+        "scope_paths[]": ["audit_run_scope.scope_value"],
+        "budget": ["audit_run.budget"],
+        "execution_policy": ["audit_run.execution_policy"],
+        "run_status": ["audit_run.run_status"],
+        "selected_companion_files": ["audit_payload.content_json"],
+        "prior_run_paths": ["audit_payload.content_json"],
+        "shared_file_owners": ["audit_payload.content_json"]
+      }
+    },
+    {
+      "id": "agent_process_sidecar",
+      "source_schema": "agent-process-extension.schema.json",
+      "mount_point": "_process",
+      "full_snapshot": ["audit_payload.content_json"],
+      "normalized": {
+        "agent_id": ["audit_agent_task.agent_id"],
+        "explicit_rationale": ["audit_payload.content_json"],
+        "evidence_refs[]": ["audit_evidence.description", "audit_evidence.repo_path", "audit_evidence.start_line", "audit_evidence.end_line", "audit_evidence.scope_name", "audit_evidence.evidence_sha256"],
+        "recon_facts[]": ["audit_recon_fact.recon_kind", "audit_recon_fact.fact_kind", "audit_recon_fact.statement", "audit_recon_fact.evidence_strength", "audit_recon_fact.unknown_reason"],
+        "hypotheses[].primary_coverage_id": ["audit_hypothesis.coverage_unit_id"],
+        "hypotheses[].coverage_ids[]": ["audit_hypothesis_coverage.coverage_unit_id"],
+        "hypotheses[]": ["audit_hypothesis.local_hypothesis_key", "audit_hypothesis.status", "audit_hypothesis_version.version_no", "audit_hypothesis_version.attacker_principal", "audit_hypothesis_version.attacker_capabilities", "audit_hypothesis_version.controlled_input", "audit_hypothesis_version.entrypoint", "audit_hypothesis_version.expected_invariant", "audit_hypothesis_version.suspected_control_failure", "audit_hypothesis_version.predicted_trace", "audit_hypothesis_version.target_boundary", "audit_hypothesis_version.affected_resource", "audit_hypothesis_version.predicted_result", "audit_hypothesis_version.preconditions_json", "audit_hypothesis_version.unknown_facts_json", "audit_hypothesis_version.alternative_explanations_json", "audit_hypothesis_version.revision_reason"],
+        "hypotheses[].evidence_refs[]": ["audit_hypothesis_evidence.evidence_id"],
+        "hypotheses[].score": ["audit_hypothesis_score.predicted_probability", "audit_hypothesis_score.probability_rationale", "audit_hypothesis_score.potential_impact", "audit_hypothesis_score.coverage_value", "audit_hypothesis_score.information_gain", "audit_hypothesis_score.estimated_validation_cost", "audit_hypothesis_score.validation_cost_unit", "audit_hypothesis_score.estimated_duration_ms", "audit_hypothesis_score.estimated_agent_calls", "audit_hypothesis_score.estimated_token_count", "audit_hypothesis_score.priority_score", "audit_hypothesis_score.formula_name", "audit_hypothesis_score.formula_version", "audit_hypothesis_score.evidence_as_of_event_id"],
+        "hypothesis_relations[]": ["audit_hypothesis_relation.from_hypothesis_id", "audit_hypothesis_relation.to_hypothesis_id", "audit_hypothesis_relation.relation_kind", "audit_hypothesis_relation.rationale"],
+        "attack_plans[]": ["audit_attack_plan.plan_version_no", "audit_attack_plan.plan_mode", "audit_attack_plan.objective", "audit_attack_plan.stop_condition", "audit_attack_plan.expected_boundary_result", "audit_attack_plan.status"],
+        "attack_plans[].steps[]": ["audit_attack_step.ordinal", "audit_attack_step.action_kind", "audit_attack_step.action_text", "audit_attack_step.precondition_text", "audit_attack_step.input_description", "audit_attack_step.expected_result", "audit_attack_step.planned_tool", "audit_attack_step.status"],
+        "observations[]": ["audit_attack_execution.execution_mode", "audit_attack_execution.status", "audit_attack_execution.actual_input_payload_id", "audit_attack_execution.observed_result", "audit_attack_execution.blocker_reason", "audit_validation_observation.observation_kind", "audit_validation_observation.expected_text", "audit_validation_observation.observed_text", "audit_validation_observation.relation_to_claim"],
+        "decision_input": ["audit_validation.input_sha256", "audit_validation.method_summary", "audit_validation.strongest_control"],
+        "critic_review": ["audit_payload.content_json", "audit_coverage_attempt.reassignment_reason", "audit_coverage_unit.status"]
+      }
+    },
+    {
+      "id": "recon_core_result",
+      "source": "RECONNAISSANCE.md:Agent 1a-1d and focused recon",
+      "required_fields": ["source facts", "repository-relative file:line references", "missing execution facts", "trust boundaries", "controls", "surfaces", "sinks", "sandbox capability"],
+      "full_snapshot": ["audit_payload.content_text"],
+      "normalized": {
+        "accepted facts": ["audit_recon_fact.statement", "audit_recon_fact.accepted_by_parent", "audit_recon_fact.included_in_architecture"],
+        "source references": ["audit_evidence.repo_path", "audit_evidence.start_line", "audit_evidence.end_line"]
+      }
+    },
+    {
+      "id": "architecture",
+      "source": "RECONNAISSANCE.md:Architecture summary and companion selection",
+      "required_fields": ["product and principals", "protected resources", "comparable baseline", "stack", "deployment paths", "entry surfaces", "source-to-sink paths", "trust boundaries", "strongest controls", "starting paths", "prior gaps", "companion selection"],
+      "full_snapshot": ["audit_payload.content_text", "audit_artifact.content_sha256"],
+      "normalized": { "version": ["audit_architecture_snapshot.version_no"], "content": ["audit_architecture_snapshot.payload_id", "audit_architecture_snapshot.content_sha256"] }
+    },
+    {
+      "id": "coverage_ledger",
+      "source": "RECONNAISSANCE.md:Deterministic coverage ledger",
+      "validator": "../ai-security-v1/validate-coverage-ledger.cjs",
+      "required_fields": ["coverage_id", "canonical_refs", "surface", "boundary", "subsystem", "attack_class", "starting_paths", "ordinary_attack_class_block", "selected_companion_blocks", "excluded_blocks", "prior_status", "attempts", "wave", "status", "agent_id", "reviewed_paths", "local_checks", "result_fingerprints", "unresolved"],
+      "optional_fields": ["lifecycle", "bookkeeping.hardening"],
+      "full_snapshot": ["audit_payload.content_json", "audit_artifact.content_sha256"],
+      "normalized": {
+        "identity and labels": ["audit_coverage_unit.coverage_id", "audit_coverage_unit.coverage_id_hash", "audit_coverage_unit.canonical_refs", "audit_coverage_unit.surface_label", "audit_coverage_unit.boundary_label", "audit_coverage_unit.subsystem_label", "audit_coverage_unit.attack_class_label", "audit_coverage_unit.lifecycle_label"],
+        "assignment blocks": ["audit_coverage_unit.starting_paths", "audit_coverage_unit.blocks_json", "audit_coverage_unit.prior_status", "audit_coverage_unit.wave", "audit_coverage_unit.status", "audit_coverage_unit.owner_task_id"],
+        "live evidence": ["audit_coverage_unit.reviewed_paths", "audit_coverage_unit.result_fingerprints", "audit_coverage_unit.unresolved", "audit_check.invariant_text", "audit_check.method", "audit_check.result_text", "audit_check.reviewed_paths", "audit_check.artifact_id"],
+        "attempts[]": ["audit_coverage_attempt.wave", "audit_coverage_attempt.status", "audit_coverage_attempt.owner_task_id", "audit_coverage_attempt.snapshot_payload_id", "audit_coverage_attempt.reassignment_reason"]
+      }
+    },
+    {
+      "id": "hunter_core_result",
+      "source": "HUNTING.md:Structured hunter result",
+      "required_fields": ["units", "candidates", "hardening", "uncovered"],
+      "full_snapshot": ["audit_payload.content_json"],
+      "normalized": {
+        "units[]": ["audit_coverage_unit.status", "audit_coverage_unit.reviewed_paths", "audit_coverage_unit.result_fingerprints", "audit_coverage_unit.unresolved", "audit_check.check_id"],
+        "candidates[]": ["audit_candidate_observation.local_fingerprint", "audit_candidate_observation.proposed_verdict", "audit_candidate_observation.payload_id", "audit_candidate_observation.observation_kind"],
+        "hardening[]": ["audit_payload.content_json"],
+        "uncovered[]": ["audit_payload.content_json", "audit_coverage_unit.coverage_id"]
+      }
+    },
+    {
+      "id": "critic_core_result",
+      "source": "HUNTING.md:Coverage-critic waves",
+      "required_fields": ["missing_units", "reassign_ids", "resolved_prior_leads", "stop"],
+      "full_snapshot": ["audit_payload.content_json"],
+      "normalized": {
+        "missing_units[]": ["audit_coverage_unit.coverage_id", "audit_coverage_unit.blocks_json"],
+        "reassign_ids[]": ["audit_coverage_attempt.coverage_unit_id", "audit_coverage_attempt.reassignment_reason"],
+        "resolved_prior_leads[]": ["audit_payload.content_json"],
+        "stop": ["audit_payload.content_json"]
+      }
+    },
+    {
+      "id": "candidate_verifier_result",
+      "source": "VALIDATION-AND-REPORTING.md:Candidate-verifier prompt",
+      "required_fields": ["decision", "record"],
+      "full_snapshot": ["audit_payload.content_json"],
+      "normalized": {
+        "decision": ["audit_decision.decision"],
+        "record": ["audit_decision.record_payload_id", "audit_finding_revision.record_payload_id"],
+        "independence": ["audit_validation.verifier_task_id", "audit_validation.independence_status"],
+        "input identity": ["audit_validation.candidate_id", "audit_validation.input_hypothesis_version_id", "audit_validation.input_sha256"]
+      }
+    },
+    {
+      "id": "findings",
+      "source_schema": "../ai-security-v1/report-schema.json",
+      "source": "VALIDATION-AND-REPORTING.md:Phase 4",
+      "full_snapshot": ["audit_payload.content_json", "audit_artifact.content_sha256"],
+      "normalized": {
+        "[].fingerprint": ["audit_finding.fingerprint", "audit_finding.fingerprint_hash"],
+        "[].verdict": ["audit_finding.current_verdict", "audit_finding_revision.verdict"],
+        "[].title": ["audit_finding_revision.title"],
+        "[].severity.overall_severity": ["audit_finding_revision.severity_overall"],
+        "[].severity.likelihood.score": ["audit_finding_revision.severity_likelihood"],
+        "[].severity.impact.score": ["audit_finding_revision.severity_impact"],
+        "[].confidence.score": ["audit_finding_revision.confidence_score"],
+        "[].confidence.reason": ["audit_finding_revision.confidence_reason"],
+        "[].trace[] and [].evidence[]": ["audit_finding_evidence.evidence_id"],
+        "all remaining schema fields": ["audit_finding_revision.record_payload_id", "audit_payload.content_json"]
+      }
+    },
+    {
+      "id": "final_review_result",
+      "source": "VALIDATION-AND-REPORTING.md:Phase 5",
+      "required_fields": ["decision", "fingerprint or reason+record"],
+      "full_snapshot": ["audit_payload.content_json"],
+      "normalized": {
+        "verified": ["audit_decision.decision", "audit_finding.status"],
+        "replace": ["audit_decision.decision", "audit_decision.material_change", "audit_finding_revision.supersedes_revision_id", "audit_finding_revision.change_reason"],
+        "input revision": ["audit_validation.input_finding_revision_id", "audit_validation.input_sha256"]
+      }
+    },
+    {
+      "id": "reports",
+      "source": "VALIDATION-AND-REPORTING.md:Phase 6",
+      "required_fields": ["REPORT.md", "FINDINGS-DETAIL.md", "NEEDS-VALIDATION.md"],
+      "full_snapshot": ["audit_payload.content_text", "audit_artifact.content_sha256"],
+      "normalized": { "artifact metadata": ["audit_artifact.artifact_kind", "audit_artifact.version_no", "audit_artifact.artifact_status", "audit_artifact.relative_path", "audit_artifact.byte_size", "audit_artifact.mime_type"] }
+    },
+    {
+      "id": "tool_and_validator_execution",
+      "source": "Platform-observable tool execution and Skill validator commands",
+      "required_fields": ["tool_name", "invocation_kind", "status", "started_at", "ended_at", "exit_code", "bounded stdout/stderr metadata", "sandbox policy"],
+      "full_snapshot": ["audit_payload.content_json"],
+      "normalized": { "execution": ["audit_tool_execution.tool_name", "audit_tool_execution.tool_version", "audit_tool_execution.invocation_kind", "audit_tool_execution.command_summary", "audit_tool_execution.sandbox_policy", "audit_tool_execution.exit_code", "audit_tool_execution.status", "audit_tool_execution.started_at", "audit_tool_execution.ended_at", "audit_tool_execution.wall_duration_ms", "audit_tool_execution.cpu_time_ms", "audit_tool_execution.peak_memory_bytes", "audit_tool_execution.stdout_bytes", "audit_tool_execution.stderr_bytes", "audit_tool_execution.timed_out"] }
+    },
+    {
+      "id": "human_adjudication",
+      "source": "Research extension; not an automatic Skill verdict",
+      "required_fields": ["subject_type", "label_scheme", "subject reference", "adjudicator_pseudonym", "label", "rationale", "eligible_for_metrics", "adjudicated_at"],
+      "full_snapshot": ["audit_payload.content_json"],
+      "normalized": { "label": ["audit_human_adjudication.subject_type", "audit_human_adjudication.label_scheme", "audit_human_adjudication.hypothesis_id", "audit_human_adjudication.candidate_id", "audit_human_adjudication.finding_id", "audit_human_adjudication.adjudicator_pseudonym", "audit_human_adjudication.label", "audit_human_adjudication.rationale", "audit_human_adjudication.eligible_for_metrics", "audit_human_adjudication.adjudicated_at"] }
+    }
+  ],
+  "table_sources": {
+    "audit_schema_version": ["database_contract"],
+    "audit_run": ["run_metadata"],
+    "audit_run_scope": ["run_metadata"],
+    "audit_payload": ["all source contracts"],
+    "audit_phase_execution": ["Parent phase state"],
+    "audit_event": ["event-envelope.schema.json"],
+    "audit_agent_task": ["Parent task lifecycle", "agent_process_sidecar"],
+    "audit_tool_execution": ["tool_and_validator_execution"],
+    "audit_artifact": ["run_metadata", "architecture", "coverage_ledger", "findings", "reports", "tool_and_validator_execution"],
+    "audit_evidence": ["agent_process_sidecar", "recon_core_result", "coverage_ledger", "findings"],
+    "audit_recon_fact": ["agent_process_sidecar", "recon_core_result"],
+    "audit_architecture_snapshot": ["architecture"],
+    "audit_coverage_unit": ["coverage_ledger", "hunter_core_result", "critic_core_result"],
+    "audit_coverage_attempt": ["coverage_ledger", "critic_core_result"],
+    "audit_check": ["coverage_ledger", "hunter_core_result", "candidate_verifier_result"],
+    "audit_hypothesis": ["agent_process_sidecar"],
+    "audit_hypothesis_version": ["agent_process_sidecar"],
+    "audit_hypothesis_coverage": ["agent_process_sidecar"],
+    "audit_hypothesis_relation": ["agent_process_sidecar", "Parent consolidation"],
+    "audit_hypothesis_evidence": ["agent_process_sidecar"],
+    "audit_hypothesis_score": ["agent_process_sidecar"],
+    "audit_attack_plan": ["agent_process_sidecar"],
+    "audit_attack_step": ["agent_process_sidecar"],
+    "audit_attack_execution": ["agent_process_sidecar", "tool_and_validator_execution"],
+    "audit_candidate": ["hunter_core_result", "candidate_verifier_result", "Parent consolidation"],
+    "audit_candidate_observation": ["hunter_core_result", "Prior-run carry", "Verifier new root"],
+    "audit_candidate_hypothesis": ["agent_process_sidecar", "Parent consolidation"],
+    "audit_candidate_coverage": ["coverage_ledger", "Parent consolidation"],
+    "audit_validation": ["candidate_verifier_result", "final_review_result"],
+    "audit_validation_observation": ["agent_process_sidecar", "candidate_verifier_result", "final_review_result"],
+    "audit_decision": ["candidate_verifier_result", "final_review_result"],
+    "audit_finding": ["findings", "final_review_result"],
+    "audit_finding_revision": ["findings", "final_review_result"],
+    "audit_finding_evidence": ["findings"],
+    "audit_finding_coverage": ["coverage_ledger", "findings"],
+    "audit_human_adjudication": ["human_adjudication"]
+  }
+}
