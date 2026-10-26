@@ -1,67 +1,53 @@
-# Telemetry Contract 1.3.0 验证状态
+# Telemetry协议1.4.0 / 数据库结构1.3.0-core状态
 
-更新时间：2026-10-26（Asia/Shanghai）
+更新时间：2026-10-27（Asia/Shanghai）
 
 ## 结论
 
-当前已完成远程 `ai_security` 的 36 张核心表创建及排序规则迁移，但**尚未开始修改 Skill**。目标兼容基线是已配置的远程 MySQL 8.0.26；本地 MySQL 5.7 不作为通过标准。
-
-## 本次验收结果（2026-10-26）
-
-| 验收项 | 结果 | 说明 |
-| --- | --- | --- |
-| 本地契约与字段对齐 | PASS | `verify-contract.cjs`、`verify-skill-db-alignment.cjs` 均通过 |
-| 远程版本与数据库编码 | PASS | MySQL 8.0.26；数据库为 `utf8mb4_general_ci` |
-| 核心表与表级排序规则 | PASS | 36/36 张表为 `utf8mb4_general_ci` |
-| 文本列排序规则 | PASS | 227/227 个 utf8mb4 文本列为 `utf8mb4_general_ci` |
-| ASCII 标识列与外键 | PASS | 142 个 `ascii_bin` 列保持不变；104 个外键兼容 |
-| 视图与 schema seed | NOT APPLIED | 当前按最小建表范围为 0 个视图、0 条 seed |
-| 核心约束与幂等重放冒烟 | PASS | 正向链路、CHECK、外键、P3/P5 输入、人工标签、多对多关系和重复幂等键均通过；合成数据已回滚 |
-| 完整状态矩阵与真实 Writer 重放 | PENDING | 仍需最小权限 Writer 和更完整的故障/重放矩阵 |
-| TLS `VERIFY_IDENTITY` | BLOCKED | 远程缺少可信 CA |
-| 运行时 Writer 权限 | BLOCKED | 当前账号为 `ALL PRIVILEGES ... WITH GRANT OPTION`，不能作为 Writer |
+远程`ai_security`已部署36张核心`audit_*`表，数据库结构保持`1.3.0-core`；Skill过程采集协议升级为`1.4.0`。本次Skill修改不执行DDL、不创建视图、不补schema seed。
 
 ## 已完成
 
-| 项目 | 结果 | 证据 |
-| --- | --- | --- |
-| 远程目标能力只读探测 | PASS | MySQL 8.0.26、服务端 `utf8mb4_0900_ai_ci`、数据库 `utf8mb4_general_ci` 等记录于 `target-mysql-profile.json` |
-| 远程现状复核 | PASS | `ai_security` 中 36 张 `audit_*` 表均为 `utf8mb4_general_ci`；视图和 schema seed 尚未应用 |
-| 远程解析器检查 | PASS | 远程 8.0.26 以 `PREPARE/DEALLOCATE` 解析 36 个 `CREATE TABLE` 和 4 个 `ALTER TABLE`，未执行 `EXECUTE` |
-| 核心 DDL 清单 | PASS | 36 表、2 视图、15 张延期表未进入候选迁移 |
-| 契约静态一致性 | PASS | 206 个具名约束、32 个投影事件；JSON 契约、表 allowlist、DDL 哈希一致 |
-| 生成可重复性 | PASS | `generate-core-ddl.cjs` 重复生成内容稳定 |
-| Skill 现有回归测试 | PASS | 两个现有 JavaScript 校验器共 65/65 通过；本轮未修改 Skill |
-| 远程核心 schema 变更 | PASS | 已创建 36 张表并完成 227 个文本列、36 个表默认排序规则迁移；未创建视图、账号或权限 |
+| 项目 | 状态 | 说明 |
+|---|---|---|
+| 远程版本 | PASS | MySQL 8.0.26 |
+| 核心表 | PASS | 36/36 |
+| 排序规则 | PASS | 表及227个utf8mb4文本列为`utf8mb4_general_ci` |
+| ASCII标识与外键 | PASS | 142个`ascii_bin`列，104个外键 |
+| 核心约束冒烟 | PASS | CHECK、FK、幂等、P3/P5输入、关系与人工标签 |
+| 原Skill基线 | PASS | 65/65测试通过 |
+| Telemetry协议 | IMPLEMENTED | 1.4.0 schemas、Outbox、Writer、P0–P6接口 |
+| 运行时协议副本 | PASS | 4份schema/projection与外部契约逐字节一致 |
+| 固定列契约 | PASS | 36表、527列，SHA-256 `6e59feddd4f17ee8269c847a2954a3d8228b37cffeb9e4a722cf1ad58c4634f3` |
+| Telemetry单元/接口测试 | PASS | 16/16；含off、local、远程断线best-effort、五接口、脱敏、Outbox损坏/恢复 |
+| Skill快速校验 | PASS | `quick_validate.py`在临时PyYAML路径运行通过，未修改用户Python环境 |
+| 远程合成血缘 | PASS | run `01M5WJHH0GWHDBZP15X9NBHV6Y`，17个唯一事件，最终`complete/synced/empty` |
+| 远程幂等重放 | PASS | 相同P0 envelope返回`already_applied`，未产生重复版本 |
+| 内部/人工标签分离 | PASS | 合成Finding为confirmed，人工adjudication独立记录false_positive |
+| 数据库结构 | FROZEN | 1.3.0-core，无本轮DDL |
+| 视图 | NOT_REQUIRED_V1 | 0个 |
+| schema seed | NOT_REQUIRED_V1 | 0条 |
 
-当前候选 DDL：
+数据库DDL基线：
 
 ```text
-contract_version = 1.3.0
-database_contract = 1.3.0-core-draft
 ddl_sha256 = 02b953a0fd48274390c15659cfdcb9c6595d4a14460569f485416baf9afe7581
 ddl_body_sha256 = 6e9c0af3b51be034a802a9aa547182b181a7adf326265a4be7730452c15d7f46
 ```
 
-## 尚未完成的硬门禁
+## 用户接受的非阻断风险
 
-| 门禁 | 为什么必须完成 | 完成条件 |
-| --- | --- | --- |
-| 视图与 schema seed | 当前按最小建表授权尚未应用 | 用户单独批准后执行 2 个视图和 1 条 schema seed，并通过验收 |
-| 最小权限 Writer | 当前配置账号拥有 `ai_security.*` 的广权限和 `GRANT OPTION` | 建立独立 Writer，并证明 DDL、DELETE、GRANT 与其他数据库访问失败 |
-| TLS 身份校验 | 当前连接已加密，但 `VERIFY_IDENTITY` 缺可信 CA/匹配主机名 | 使用可信 CA 与证书匹配主机名成功连接 |
-| 迁移版本最终冻结 | 当前数据库契约仍标记 `core-draft` | 正式执行验收后冻结非 draft 版本并重新计算全部哈希 |
-| 后续远程 DDL 单独授权 | DDL 自动提交，失败恢复成本高 | 用户在执行前明确批准具体目标和对象 |
+| 项目 | 状态 | 运行时处理 |
+|---|---|---|
+| TLS服务端身份未验证 | ACCEPTED_RISK | `PREFERRED`，记录`tls_identity_not_verified`，不伪称安全通过 |
+| 当前账号权限较大 | ACCEPTED_RISK | 记录`broad_database_account`；Writer代码限制表、列和SQL类别 |
 
-## 下一步唯一安全顺序
+## 启用远程Writer前仍必须满足
 
-```text
-核心表与排序规则迁移已完成
-→ 如需要，用户批准后补齐视图和 schema seed
-→ 修复（如有）并冻结非 draft 契约
-→ 验证最小权限 Writer 与 TLS VERIFY_IDENTITY
-→ 远程建表并验收
-→ 按同一契约修改 Skill
-```
+- 本次运行具有明确`remote_mysql`授权或可审计组织策略。
+- 本地Outbox已经安全落盘。
+- 36表、527列及固定列指纹只读预检通过。
+- `MYSQL_PWD`只在可信Parent启动的Writer环境中存在。
+- 相同幂等键不得对应不同envelope hash。
 
-在上述硬门禁完成前，任何人都不应把候选 SQL 直接导入远程 `ai_security`，也不应让 Skill 按未冻结的列或事件名开始写库。
+数据库和Outbox故障不能改变审计Verdict。完整审计默认local/best-effort；remote是获授权后的同步模式。

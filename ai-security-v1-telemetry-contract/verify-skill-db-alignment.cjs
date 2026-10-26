@@ -2,6 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 
 const dir = __dirname;
 const projectDir = path.dirname(dir);
@@ -18,8 +19,14 @@ const skillText = fs.readFileSync(path.join(projectDir, 'ai-security-v1/SKILL.md
 const huntingText = fs.readFileSync(path.join(projectDir, 'ai-security-v1/HUNTING.md'), 'utf8');
 const validationText = fs.readFileSync(path.join(projectDir, 'ai-security-v1/VALIDATION-AND-REPORTING.md'), 'utf8');
 const ledgerValidator = fs.readFileSync(path.join(projectDir, 'ai-security-v1/validate-coverage-ledger.cjs'), 'utf8');
+const runtimeContractDir = path.join(projectDir, 'ai-security-v1/references/telemetry');
+const runtimeManifest = JSON.parse(fs.readFileSync(path.join(runtimeContractDir, 'contract-manifest.json'), 'utf8'));
 
-if (storage.schema_version !== '1.3.0' || storage.database_contract !== '1.3.0-core-draft') fail('storage contract version mismatch');
+for (const file of ['event-envelope.schema.json', 'telemetry-config.schema.json', 'agent-process-extension.schema.json', 'projection-map.json']) {
+  if (fs.readFileSync(path.join(runtimeContractDir, file), 'utf8') !== read(file)) fail(`runtime contract copy differs: ${file}`);
+}
+
+if (storage.schema_version !== '1.4.0' || storage.database_contract !== '1.3.0-core') fail('storage contract version mismatch');
 if (projection.schema_version !== storage.schema_version || projection.database_contract !== storage.database_contract) fail('projection/storage version mismatch');
 if (agentSchema.properties.schema_version.const !== storage.schema_version) fail('agent/storage version mismatch');
 
@@ -33,6 +40,10 @@ for (const match of ddl.matchAll(/CREATE TABLE (audit_[a-z_]+) \(\n([\s\S]*?)\n\
   tables.set(match[1], columns);
 }
 if (tables.size !== 36) fail(`expected 36 DDL tables, found ${tables.size}`);
+const columnLines = [];
+for (const [table, columns] of [...tables.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) for (const column of [...columns].sort()) columnLines.push(`${table}.${column}`);
+const columnHash = crypto.createHash('sha256').update(`${columnLines.join('\n')}\n`).digest('hex');
+if (runtimeManifest.database_schema_version !== '1.3.0-core' || runtimeManifest.core_table_count !== tables.size || runtimeManifest.database_column_count !== columnLines.length || runtimeManifest.database_columns_sha256 !== columnHash) fail('runtime database schema fingerprint differs from the frozen DDL');
 
 const tableSourceNames = Object.keys(storage.table_sources);
 const missingTableSources = [...tables.keys()].filter((table) => !tableSourceNames.includes(table));

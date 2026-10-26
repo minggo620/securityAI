@@ -1,12 +1,12 @@
 # ai-security-v1 Skill 可观测化与数据库采集实施方案
 
-> 文档状态：待实施设计方案  
-> 当前操作边界：本文件仅保存实施方案；尚未修改 Skill 契约、脚本、校验器或数据库，也未执行 DDL。  
+> 文档状态：第一版核心实现完成（2026-10-27）
+> 当前操作边界：Skill 契约、Telemetry 1.4.0、Outbox、Writer、P0–P6 记录点和测试已实现；本轮未执行 DDL，既有 36 张表保持不变。
 > 设计基线：`ai-security-v1` 当前版本及三份已完成的数据库与流程设计文档。
 
-> 架构复核修订：第一版数据库由原 49 表概念模型收敛为 36 张核心事务表。移除数据库租约、通用字段 provenance、远程逐事件 checkpoint/ingest failure、surface/boundary、coverage block、Critic、validator、report 和 metric 专表；这些能力分别由本地 telemetry、事件 JSON、architecture/coverage payload、Agent/tool/artifact 和后置研究任务承担。历史 `1.1.0-draft` DDL 已作废，实施时必须使用并验证 `1.3.0-core-draft`。
+> 架构复核修订：第一版数据库由原 49 表概念模型收敛为 36 张核心事务表。移除数据库租约、通用字段 provenance、远程逐事件 checkpoint/ingest failure、surface/boundary、coverage block、Critic、validator、report 和 metric 专表；这些能力分别由本地 telemetry、事件 JSON、architecture/coverage payload、Agent/tool/artifact 和后置研究任务承担。数据库结构冻结为 `1.3.0-core`，过程协议独立演进为 `1.4.0`。
 
-> 前置契约包：[`ai-security-v1-telemetry-contract/`](./ai-security-v1-telemetry-contract/README.md)。数据库建表和 Skill 修改必须共同依赖该版本化目录；在项目远程 MySQL 8.0.26 的只读解析、TLS VERIFY_IDENTITY 和最小权限 Writer 方案完成前，不得启用远程 Writer。真正 DDL 执行需用户单独批准。
+> 前置契约包：[`ai-security-v1-telemetry-contract/`](./ai-security-v1-telemetry-contract/README.md)。远程 MySQL 8.0.26 的 TLS 身份未验证和广权限账号已按用户决定记录为第一版 `accepted_risk`，不再阻断获授权的远程 Writer；应用层 SQL/表/列 allowlist、明确 `remote_mysql` 授权和本地 Outbox 仍是硬门禁。任何未来 DDL 仍需单独批准。
 
 ## 1. 目标与不可破坏的执行原则
 
@@ -16,7 +16,7 @@
 
 - 现有两个校验器共 65 项测试全部通过。
 - 当前 Skill 是由 Markdown 契约、Agent 返回约定、JSON 产物和 JavaScript 校验器共同驱动，不是一个集中式编排程序。
-- 官方 `quick_validate.py` 暂时因本机缺少 PyYAML 无法执行；实施阶段应在隔离验证环境补齐 PyYAML 后重新运行，不能将当前失败误判为 Skill 内容错误。
+- 官方 `quick_validate.py` 已通过；PyYAML 仅临时加载到 `/private/tmp`，未修改用户 Python 环境。
 
 必须保持以下最高优先级不变量：
 
@@ -215,9 +215,9 @@ uncovered
 修改 `DATABASE.md`：
 
 - 将“人工数据库操作模式”和“审计 Telemetry Writer”明确分开。
-- Telemetry 不复用现有广权限数据库凭据。
-- Writer 使用独立最小权限账号。
-- 数据库配置使用权限为 `0600` 的 MySQL defaults 文件。
+- 第一版按用户决定复用已限制到 `ai_security` 的现有账号，并如实记录 `broad_database_account`，不把它标记为最小权限或安全通过。
+- Writer 在应用层只接受固定数据库、32 类事件、36 表、固定列指纹、INSERT、CAS UPDATE、幂等 SELECT 和事务控制。
+- 连接参数只由可信 Parent 环境提供，密码只经 `MYSQL_PWD` 注入。
 - 密码不得进入命令行参数、事件、日志、Outbox 或报告。
 - DDL、账号和授权创建只能在单独批准的迁移操作中执行。
 - Skill 运行不得自动执行建表或升级数据库。
@@ -229,10 +229,10 @@ uncovered
 新增：
 
 - `TELEMETRY.md`：完整运行契约、失败策略、事件顺序和安全边界。
-- `telemetry-event-schema.json`：统一事件信封。
-- `telemetry-config-schema.json`：运行模式和失败策略。
-- `agent-result-schema.json`：Recon、Hunter、Critic、Verifier 和 Final Review 分支。
-- `telemetry-projection-map.json`：事件到表、字段、来源类别的确定性映射。
+- `references/telemetry/event-envelope.schema.json`：统一事件信封。
+- `references/telemetry/telemetry-config.schema.json`：运行模式和失败策略。
+- `references/telemetry/agent-process-extension.schema.json`：Recon、Hunter、Critic、Verifier 和 Final Review 分支。
+- `references/telemetry/projection-map.json`：事件到表和来源类别的确定性映射；`contract-manifest.json` 固定 36 表/527 列指纹。
 - `ai-security-v1-telemetry-contract/001_ai_security_core_schema.sql`：与数据库模型一致的 MySQL 8.0.26 候选 DDL。
 
 DDL 文件默认只读，不由审计流程执行。
@@ -489,8 +489,8 @@ payload
 ### 阶段 B：本地基础设施
 
 - 实现事件 Schema、规范化 JSON、ULID、脱敏和 Outbox。
-- Telemetry 默认保持关闭。
-- 不修改 P1–P6 Prompt。
+- 完整审计 Telemetry 默认 `local + best_effort`；guidance 不启用，`off` 保留原流程。
+- P1–P6 Prompt 仅增加独立 `_process` sidecar 和 Hunter 两检查点，不改变原核心结果契约的权威性。
 
 通过条件：基础设施单元测试全部通过，现有 65 项测试仍通过。
 
@@ -510,21 +510,20 @@ payload
 
 通过条件：扩展完整性达到要求，且没有新增审计流程中断。
 
-### 阶段 E：数据库 Writer
+### 阶段 E：数据库 Writer（已完成核心实现）
 
-- 复核已生成的 `ai-security-v1-telemetry-contract/001_ai_security_core_schema.sql`；禁止复用历史 49 表 DDL。
-- 在一次性 MySQL 8.0.26 测试实例应用 DDL。
-- 验证恰好 36 张核心表、外键、CHECK、索引和视图，并证明 15 张延期表未进入迁移。
-- 测试重放、回滚、去重、血缘和权限。
+- 未执行 DDL；直接只读预检既有远程 36 表、527 列及固定 SHA-256 指纹。
+- Writer 不导出原始 SQL 接口，只能通过事件 projection map 产生 INSERT、CAS UPDATE 和事务语句。
+- 已验证真实远程投影、完整血缘、人工标签分离、幂等重放、TLS cipher 存在和最终 run 状态。
 
-通过条件：运行账号无法执行 DDL、DELETE、GRANT 或访问其他数据库。
+通过条件：应用代码不能产生 DELETE、DDL、GRANT、动态表名或其他数据库访问；账号本身权限较大属于已接受风险。
 
-### 阶段 F：远程试运行
+### 阶段 F：远程试运行（已完成合成验收）
 
 - 必须获得单独授权。
-- 创建专用最小权限账号和安全 defaults 文件。
-- 小规模 canary 同步。
-- 对比 JSON 事实源与数据库投影。
+- 使用明确合成 repo/run 标识和本次用户授权执行 canary 同步。
+- 对比 Outbox 事件、checkpoint、数据库投影和项目→模型→假设→攻击→验证→Finding 血缘。
+- 测试数据不由运行时 Writer 删除；保留供用户后续按合成标识清理。
 
 回滚方式：关闭 remote sync，保留本地 Outbox；审计主流程不需要回滚。
 
@@ -583,13 +582,13 @@ payload
 
 ## 13. 已锁定默认决策
 
-- Telemetry Schema 初始版本为 `1.3.0`；历史 `1.1.0-draft` 不得执行。
+- 数据库结构版本为 `1.3.0-core`；Telemetry 协议版本为 `1.4.0`。
 - 完整审计默认 `local + best_effort`。
 - 远程同步默认关闭。
 - required 模式只能显式启用。
 - 不新增 npm 运行时依赖。
 - 不自动执行 DDL。
-- 不复用 `DATABASE.md` 中的广权限连接。
+- 第一版允许复用 `DATABASE.md` 的现有连接，但必须记录广权限 accepted risk，并由 Writer 应用层边界限制。
 - 不修改现有 Finding Verdict Schema。
 - 不记录隐藏思维链。
-- 三份设计文档需要先将原有“Outbox 失败必停”统一修订为本方案的双模式语义，再作为实现基线。
+- 三份设计文档已统一为 `best_effort|required` 双模式语义，并与实现版本对齐。

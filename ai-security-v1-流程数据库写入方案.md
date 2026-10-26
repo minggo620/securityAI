@@ -1,9 +1,9 @@
 # ai-security-v1 流程数据库写入方案
 
-> 状态：实施指导设计；本文件不会触发数据库连接或写入。  
-> Skill 基线：`./ai-security-v1/`，清单 SHA-256 `bac04717601a140814c5963b6277c1d3ab8df6225184c0c49a8a4721103effa0`。  
+> 状态：第一版实现与写入契约；阅读本文件不会触发数据库连接或写入，实际入口为 Skill Telemetry CLI。
+> Skill 基线：`./ai-security-v1/`，41 个文件，清单 SHA-256 `a0f1b7cd9ce2e23bef9c7831b9bb3381e6ba68ae8f5ce7e8292534984fc463af`。
 > 数据模型：[ai-security-v1-数据库逻辑模型.md](./ai-security-v1-数据库逻辑模型.md)。  
-> Schema 版本：`1.3.0-core-draft`。
+> 数据库结构版本：`1.3.0-core`；Telemetry 协议版本：`1.4.0`。
 
 > 机器可读前置契约：[`ai-security-v1-telemetry-contract/`](./ai-security-v1-telemetry-contract/README.md)。Skill 修改只能使用该目录中冻结的 event/config/agent schema 与 projection map，不得从本文自然语言猜测字段。
 
@@ -11,7 +11,7 @@
 
 ## 1. 目标与机制变化
 
-本方案把当前由 Markdown 指导、文件承载的审计流程扩展为可观察、可重放、可量化的流程。当前 Skill 没有编排器、Outbox 或 MySQL 写入器；以下数据库操作均为 `P` 类新增机制，不是现有实现。
+本方案已落地为 Skill 1.4.0 的可观察、可重放过程侧车：`ai-security-v1/TELEMETRY.md` 定义运行契约，`ai-security-v1/scripts/telemetry/` 实现本地 Outbox、五个 Parent 接口、幂等重放和 MySQL Writer。数据库仍只是文件/Agent结果的旁路投影，不是审计裁决源。
 
 | 标记 | 含义 |
 | --- | --- |
@@ -61,11 +61,11 @@ ai_security.audit_* tables
 
 ### 3.1 文件与记录格式
 
-Outbox 位于 Parent 共享输出目录，建议命名 `telemetry-outbox.jsonl`。每行是一个完整事件信封；不允许多行 JSON、就地编辑或 Agent 写入。
+Outbox 位于 Parent 共享输出目录，固定命名 `telemetry/outbox.jsonl`。每行是一个完整事件记录；不允许多行 JSON、就地编辑或 Agent 写入。
 
 ```json
 {
-  "schema_version": "1.3.0",
+  "schema_version": "1.4.0",
   "event_id": "01...ULID",
   "idempotency_key": "run/.../phase/P2/hypothesis/.../v1",
   "run_id": "01...ULID",
@@ -162,7 +162,7 @@ checkpoint 和 dead-letter 只保存在 Parent 独占的本地 telemetry 目录�
 
 ```json
 {
-  "schema_version": "1.3.0",
+  "schema_version": "1.4.0",
   "request_id": "01...ULID",
   "status": "inserted|duplicate_identical|pending|rejected|conflict",
   "run_id": "01...ULID",
@@ -519,17 +519,17 @@ P6 只冻结指标所需的原始事实和 as-of event。指标由后置、版�
 | run complete + pending_sync | 两个状态并存且报告披露 |
 | 人工与内部结论不一致 | 两套标签并存，指标 basis 明确 |
 
-## 13. 第二版实施顺序
+## 13. 第一版实施状态
 
-1. 在独立测试库验证 DDL 和权限模型。
-2. 定义 event JSON Schema、状态机和错误码。
-3. 实现脱敏器、ULID/hash/idempotency 工具。
-4. 实现安全 Outbox 和 ack/checkpoint。
-5. 实现 Writer 五个接口和事务投影。
-6. 为 Recon/Hunter/Critic/Verifier 增加结构化过程契约。
-7. 在 P0–P6 加入 Parent 记录点。
-8. 实现一致性校验器：文件↔事件↔投影。
-9. 运行十二个合成场景和故障注入。
-10. 经单独授权后迁移远程 `ai_security`。
+1. 已完成：远程 MySQL 8.0.26 部署并验收 36 张 `1.3.0-core` 表。
+2. 已完成：event、config、Agent `_process` 和 projection map 协议升级到 `1.4.0`。
+3. 已完成：脱敏器、ULID、canonical JSON、hash 和 idempotency 工具。
+4. 已完成：本地 Outbox、hash-chain、排他锁、尾部恢复、checkpoint 和 dead-letter。
+5. 已完成：`init-run`、`record-event`、`record-snapshot`、`flush-outbox`、`finalize-run` 五个接口及事务 Writer。
+6. 已完成：Recon/Hunter/Critic/Verifier 结构化 `_process` 契约和 Hunter 两检查点机制。
+7. 已完成：P0–P6 Parent 记录点写入现有 Skill 指导流程。
+8. 已完成：36 表、527 字段、32 类事件的静态对齐校验。
+9. 已完成：原 65 项回归、Telemetry 单元测试、远程 P0、幂等重放及项目→模型→假设→攻击→验证→Finding 血缘验收。
+10. 后续强化：十二场景的批量故障矩阵、容量基线、保留清理任务和后台查询视图。
 
-本方案不会把数据库接入描述为当前 Skill 的已有能力；在第二版真正实现、测试和部署前，所有 `P` 字段都只是设计契约。
+`P` 表示由方案新增的机制来源，不再表示“尚未实现”。数据库仍是旁路投影；当前审计文件和独立验证结果保持权威。

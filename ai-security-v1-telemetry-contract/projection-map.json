@@ -1,6 +1,6 @@
 {
-  "schema_version": "1.3.0",
-  "database_contract": "1.3.0-core-draft",
+  "schema_version": "1.4.0",
+  "database_contract": "1.3.0-core",
   "projection_policy": {
     "transaction_scope": "one_event_plus_all_normalized_projections",
     "delivery": "at_least_once_transport_idempotent_database_effect",

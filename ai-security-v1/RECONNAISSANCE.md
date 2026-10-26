@@ -6,6 +6,8 @@ The parent initializes `run-metadata.json`, applies the strict pre-reconnaissanc
 
 Launch several `research` agents in parallel. They return structured facts to the parent and do not write files.
 
+When telemetry is enabled, the Parent records `agent.task_started` before each launch (`DB-P1-01`) and adds the common return suffix below to every Recon prompt. The core `facts` remain the reconnaissance input; `_process` is a separately validated observational sidecar. Under `best_effort`, accept a valid legacy core response if `_process` is absent or malformed, mark its process data `process_missing` or discarded, and continue. Under `required`, retry within the budget or finish incomplete. An Agent never creates telemetry/database identifiers, projections, events, or SQL.
+
 **Agent 1a: Product, stack, and local operation**
 
 ```text
@@ -54,6 +56,35 @@ Read tests, build definitions, manifests, packaging, and maintained environment 
 7. Whether trusted parent-side code can promote predeclared scratch files with path-confined no-follow descriptor traversal, nonblocking regular-file checks, no-follow traversal of every destination parent, exclusive regular-file destination creation, and explicit per-file and cumulative size bounds. Missing promotion controls block use of scratch files as evidence.
 ```
 
+#### Common telemetry return suffix — append to every Recon prompt
+
+```text
+When process telemetry is enabled, return exactly one JSON object and no surrounding
+prose. Put the source facts requested above in `facts`; each fact has a local `fact_id`,
+`fact_kind` (`source_fact|inference|unknown`), statement, repository-relative source
+references, evidence strength (`direct|corroborated|indirect|none`), and an exact
+unknown reason when applicable. Add `_process` matching the telemetry 1.4.0 sidecar:
+
+{
+  "facts": [ ...the role-specific core facts... ],
+  "_process": {
+    "schema_version": "1.4.0",
+    "result_type": "recon",
+    "agent_id": "<assigned-agent-id>",
+    "explicit_rationale": "concise evidence-based synthesis; never hidden reasoning",
+    "evidence_refs": [ ... ],
+    "recon_facts": [ ... ],
+    "observations": []
+  }
+}
+
+Use the assigned Recon kind: product_stack, principals_controls, surfaces_sinks,
+execution_visibility, or focused. Do not include credentials, host absolute paths,
+complete environments, authentication state, or hidden chain-of-thought.
+```
+
+After a Recon return, the Parent first validates and consumes `facts`, then validates `_process`, records the redacted output snapshot, creates one `recon.fact_recorded` event per accepted/unknown fact with its evidence, and completes the Agent task (`DB-P1-02`). `accepted_by_parent` and `included_in_architecture` are Parent decisions, never Agent assertions. Record the platform model provider/name/version/reasoning effort only when observable; otherwise store null rather than guessing.
+
 Add focused reconnaissance agents for materially distinct deployment modes or subsystems that these four do not map. Do not silently omit them: if the budget gate in `SKILL.md` blocks a focused agent, launch nothing for it, seed the unmapped area as a `deferred` ledger unit with reason `budget_cannot_reserve_critics_and_validation`, and disclose the gap in the report.
 
 ## Prior-run input
@@ -84,6 +115,8 @@ The parent synthesizes `<output-dir>/architecture.md`, with a hard cap of about 
 8. A short companion-selection summary derived from [ATTACK-CLASSES.md](ATTACK-CLASSES.md): selected files and the source-visible boundaries that require them.
 
 Keep the assignment-level ordinary block, selected companion blocks, and excluded blocks with reasons in each ledger unit, not in `architecture.md`. This keeps the architecture cap valid for large runs and makes the exact hunter prompt map machine-checkable.
+
+After the Parent writes `architecture.md`, record its redacted snapshot and SHA-256 with `architecture.snapshot_created` (`DB-P1-03`). The file remains authoritative; a database snapshot never replaces it.
 
 Do not select a companion file merely because the language or dependency name appears. Select it because reconnaissance found the trust-sensitive boundary described by its `When to use this file` section. Do not exclude a visible boundary just because another agent will review a related class.
 
@@ -154,3 +187,5 @@ Canonical agent IDs match `^[a-z0-9][a-z0-9_-]{0,63}$` and are not Windows devic
 The ledger is the coverage claim. An architecture summary, agent count, or generic "auth reviewed" sentence is not coverage evidence. Phase 2 closes units only from the paths and checks in a hunter's structured result.
 
 Run `node <skill-dir>/validate-coverage-ledger.cjs <output-dir>/coverage-ledger.json` after seeding, after every parent update, and before Phase 6. The validator rejects input beyond 5 MiB, 64 nesting levels, 10,000 units, 1,000 entries in a nested collection, or 500,000 traversed values, and caps reported validation errors at 100. In practice the 5 MiB byte limit holds roughly 2,000-5,000 realistic units, so it binds before the 10,000-unit cap. Fix every error before assigning work or making a coverage claim.
+
+When telemetry is enabled, seed all accepted units through `coverage.seeded` (`DB-P1-04`) and record every validator invocation, input hash, exit code, bounded output metadata, and ledger artifact hash through `validator.completed` (`DB-P1-05`). Only record these after the Parent has written the authoritative ledger. Validator success proves structure, not coverage sufficiency.

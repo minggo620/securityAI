@@ -114,7 +114,8 @@ if (!ddl.includes("'1.3.0-core-draft', CURRENT_TIMESTAMP(6), 'P'")) fail('schema
 const loaded = Object.fromEntries(jsonFiles.map((name) => [name, readJson(name)]));
 for (const [name, entry] of Object.entries(loaded)) {
   if (!entry.value || typeof entry.value !== 'object' || Array.isArray(entry.value)) fail(`${name} must contain one JSON object`);
-  if (entry.value.schema_version && entry.value.schema_version !== '1.3.0') fail(`${name} schema_version mismatch`);
+  const expectedVersion = name === 'target-mysql-profile.json' ? '1.3.0' : '1.4.0';
+  if (entry.value.schema_version && entry.value.schema_version !== expectedVersion) fail(`${name} schema_version mismatch`);
 }
 
 const eventSchema = loaded['event-envelope.schema.json'].value;
@@ -126,9 +127,10 @@ const configText = loaded['telemetry-config.schema.json'].text;
 for (const forbidden of ['"password"','"passwd"','"secret"','"token"','"api_key"']) {
   if (configText.toLowerCase().includes(forbidden)) fail(`telemetry config exposes forbidden credential property: ${forbidden}`);
 }
+if (!configText.includes('"accepted_risks"') || !configText.includes('"PREFERRED"')) fail('telemetry config must record accepted deployment risks');
 
 const projection = loaded['projection-map.json'].value;
-if (projection.database_contract !== '1.3.0-core-draft') fail('projection map database contract mismatch');
+if (projection.database_contract !== '1.3.0-core') fail('projection map database contract mismatch');
 if (projection.projection_policy.database_is_a_replica !== true) fail('projection map must state that database is a replica');
 const eventTypes = projection.events.map((entry) => entry.event_type);
 if (new Set(eventTypes).size !== eventTypes.length) fail('duplicate projection event type');
@@ -157,8 +159,10 @@ if (target.server.character_set_server !== 'utf8mb4' || target.server.collation_
 if (target.schema_observation.database_character_set !== 'utf8mb4' || target.schema_observation.database_collation !== 'utf8mb4_general_ci') fail('target database charset/collation mismatch');
 if (target.schema_observation.existing_audit_table_count !== 36) fail('target audit_* table count does not match the applied core schema');
 if (target.connection_observation.required_writer_collation !== 'utf8mb4_general_ci') fail('required writer collation mismatch');
-if (target.account_observation.acceptable_for_runtime_writer !== false) fail('overprivileged configured account must not be approved as runtime Writer');
+if (target.account_observation.least_privilege_compliant !== false || target.account_observation.v1_runtime_decision !== 'accepted_risk_with_application_allowlist') fail('overprivileged account must remain a recorded accepted risk with an application allowlist');
 if (target.connection_observation.verify_identity_result !== 'blocked_missing_trusted_ca') fail('unexpected TLS identity verification state');
+if (target.blockers_before_remote_writer.length !== 0 || !target.accepted_risks.includes('tls_identity_not_verified') || !target.accepted_risks.includes('broad_database_account')) fail('accepted runtime risks must be explicit and non-blocking');
+if (target.future_ddl_gate !== 'separate explicit authorization required') fail('future DDL must retain a separate authorization gate');
 
 const alignment = cp.spawnSync(process.execPath, [alignmentVerifierPath], { encoding: 'utf8' });
 if (alignment.status !== 0) fail(`Skill/DB alignment verification failed: ${alignment.stderr || alignment.stdout}`);
@@ -167,7 +171,8 @@ if (alignmentResult.status !== 'pass' || alignmentResult.tables !== 36) fail('Sk
 
 console.log(JSON.stringify({
   status: 'pass',
-  contract_version: '1.3.0',
+  contract_version: '1.4.0',
+  database_contract: '1.3.0-core',
   tables: tableNames.length,
   constraints: constraintNames.length,
   projection_events: projection.events.length,
@@ -175,5 +180,5 @@ console.log(JSON.stringify({
   source_contracts: alignmentResult.source_contracts,
   ddl_sha256: sha256(ddl),
   ddl_body_sha256: declaredBodyHash,
-  target_runtime_validation: 'remote_core_schema_applied_core_behavior_smoke_pass_full_matrix_pending'
+  target_runtime_validation: 'remote_schema_fingerprint_and_lineage_acceptance_pass_extended_matrix_pending'
 }, null, 2));

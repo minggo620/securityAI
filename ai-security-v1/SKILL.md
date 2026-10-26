@@ -12,8 +12,8 @@ Find vulnerabilities that violate a real trust boundary, then give owners the so
 This skill is guidance by default. Loading it does not authorize the complete audit workflow or file creation.
 
 - **Guidance mode**: For security questions, focused reviews, methodology, triage, or investigation of specific findings, use only the relevant parts of this skill. Do not automatically run all six phases, create an output directory, or write audit artifacts. You may launch focused agents when useful; they return results to the current task.
-- **Full audit mode**: Use the complete workflow when the user explicitly asks to audit or pen-test a codebase, asks for a full, comprehensive, or end-to-end security review, or requests report artifacts. Run all six phases and write the files defined below.
-- **Database mode**: Use only when the user explicitly asks to inspect, query, export, or modify the configured `ai_security` MySQL database. Before any database operation, read and follow [DATABASE.md](DATABASE.md). Database access is not part of an audit run unless the user separately requests it.
+- **Full audit mode**: Use the complete workflow when the user explicitly asks to audit or pen-test a codebase, asks for a full, comprehensive, or end-to-end security review, or requests report artifacts. Run Phase 0 and all six audit phases and write the files defined below. Process telemetry defaults to the local, best-effort Outbox described in [TELEMETRY.md](TELEMETRY.md); it is a sidecar and never a verdict source.
+- **Database mode**: Use only when the user explicitly asks to inspect, query, export, or modify the configured `ai_security` MySQL database. Before any database operation, read and follow [DATABASE.md](DATABASE.md). A full audit may synchronize its already-local telemetry to that database only with run-specific authorization or an auditable organization policy; ordinary live database work remains a separate mode.
 
 If the request could mean either mode, ask one focused question before creating files or starting the complete workflow.
 
@@ -64,6 +64,8 @@ The parent creates and is the only writer of shared run files:
 - `FINDINGS-DETAIL.md`
 - `NEEDS-VALIDATION.md`
 
+When telemetry is enabled, the Parent is also the only writer of `telemetry/outbox.jsonl`, `telemetry/checkpoint.json`, `telemetry/dead-letter.jsonl`, and the telemetry lock/config files. Agents and target-controlled processes cannot see these files or database credentials. Database state is a replayable projection of the authoritative files and accepted Agent results, never the current audit's security fact source.
+
 Each hunter or verifier receives a unique root under `<output-dir>/agents/<agent-id>/`, with separate `scratch/` and `artifacts/` directories. Canonical agent IDs match `^[a-z0-9][a-z0-9_-]{0,63}$` and must not equal a Windows device name such as `con`, `prn`, `aux`, `nul`, `com1` through `com9`, or `lpt1` through `lpt9`. Lowercase IDs prevent case-fold collisions. The agent and every target-controlled process may write only to `scratch/`; retained `artifacts/` is parent-owned, is never exposed to the sandbox, and is writable only by trusted parent-side promotion code. Agents may not change shared files, target source, retained artifacts, or another agent's directory. Do not use `/tmp` or the host home directory as a writable fallback.
 
 Before execution, the parent opens and retains trusted, non-inheritable directory descriptors for the agent's `scratch/` and `artifacts/` roots, and records an allowlist of expected scratch-relative artifact files plus explicit per-file and cumulative byte limits. Never pass those descriptors to the agent or sandbox. After the sandbox and all its processes terminate, trusted parent-side code promotes each allowlisted file separately:
@@ -84,7 +86,7 @@ Before execution, the parent opens and retains trusted, non-inheritable director
 
 For a reproduced check, record the command, exact test input, sandbox limits, and only the allowlisted environment variable names plus safe non-secret values needed to reproduce it. Never capture or copy the ambient environment, inherited variables, credential values, authentication state, or unrelated host paths. Launch from an empty environment rather than trying to redact one after execution.
 
-Before delegation, the parent writes `run-metadata.json` with at least `run_id`, `repo`, `target`, `source_ref`, `profile`, `scope_paths`, `budget` (null if unset), `execution_policy: "sandboxed-source-and-local-only"`, selected companion files, prior-run paths, shared-file owners, and `run_status: "in_progress"`. Update metadata only when those facts change; candidate state belongs in the coverage ledger and `findings.json`.
+Before delegation, the parent completes Phase 0 in [TELEMETRY.md](TELEMETRY.md), then writes `run-metadata.json` with at least `run_id`, `repo`, `target`, `source_ref`, `profile`, `scope_paths`, `budget` (null if unset), `execution_policy: "sandboxed-source-and-local-only"`, selected companion files, prior-run paths, shared-file owners, `telemetry_mode`, `telemetry_failure_policy`, local/remote/outbox status, and `run_status: "in_progress"`. Update metadata only when those facts change; candidate state belongs in the coverage ledger and `findings.json`. In `off` mode, omit telemetry files and preserve the pre-telemetry audit behavior.
 
 ## Full audit planning
 
@@ -121,7 +123,7 @@ Profiles change breadth and redundancy, never the evidence bar. Do not scale awa
 
 The ledger makes spend countable: one unit is roughly one hunter assignment, and one surviving candidate is one or two verifier assignments depending on profile. When the user sets a budget — or the parent proposes one for a large target — record `budget` in `run-metadata.json` as a maximum number of agent invocations across all phases.
 
-Apply the strict budget gate before launching any reconnaissance agent. Reserve the four baseline reconnaissance calls, one final post-wave critic for `quick` or one post-wave plus one distinct final-clean critic for `standard`/`deep`, and at least one verifier call. Add focused reconnaissance only after repeating this gate for each extra call. If the requested budget cannot fund that minimum, launch no agent: ask for a larger budget, narrower scope, or different profile. If the request remains unchanged, set `run_status: "incomplete"` with `incomplete_reason: "budget_cannot_fund_reconnaissance_and_reserves"` and report that no audit pass ran.
+Apply the strict budget gate before launching any reconnaissance agent. Reserve the four baseline reconnaissance calls, one final post-wave critic for `quick` or one post-wave plus one distinct final-clean critic for `standard`/`deep`, and at least one verifier call. A telemetry-enabled Hunter uses two model checkpoints—plan, then execution—and both count against a strict invocation budget even though they share one logical Agent task. Add focused reconnaissance only after repeating this gate for each extra call. If the requested budget cannot fund that minimum, launch no agent: ask for a larger budget, narrower scope, or different profile. If the request remains unchanged, set `run_status: "incomplete"` with `incomplete_reason: "budget_cannot_fund_reconnaissance_and_reserves"` and report that no audit pass ran.
 
 Spend it in this order:
 
@@ -168,14 +170,15 @@ For each confirmed finding, identify the invariant the code must enforce and the
 
 ## Full audit workflow
 
-In full audit mode, follow all six phases in order:
+In full audit mode, first read [TELEMETRY.md](TELEMETRY.md), then follow Phase 0 and all six audit phases in order. Telemetry events are recorded only after the Parent validates the source result and its ownership. Under `best_effort`, a telemetry failure never changes a valid core result.
 
-1. **Reconnaissance** — map the source, trust boundaries, local build paths, companion selections, prior evidence, and initial deterministic coverage ledger with [RECONNAISSANCE.md](RECONNAISSANCE.md).
-2. **Coverage-led hunting waves** — assign isolated hunters from the ledger and collect structured candidate results with [HUNTING.md](HUNTING.md), [ATTACK-CLASSES.md](ATTACK-CLASSES.md), and the selected domain companions.
-3. **Candidate validation** — consolidate fingerprints and give every candidate to a fresh source verifier as defined in [VALIDATION-AND-REPORTING.md](VALIDATION-AND-REPORTING.md).
-4. **Structured output** — write all final `confirmed`, `needs_validation`, and `rejected` records to `findings.json`; validate it with `report-schema.json` and `validate-findings.cjs`, and validate the coverage claim with `validate-coverage-ledger.cjs`.
-5. **Independent record verification** — use fresh agents to verify final source claims and reconcile corrections or state changes.
-6. **Target-neutral report** — derive `REPORT.md`, `FINDINGS-DETAIL.md`, and `NEEDS-VALIDATION.md` from the final records, with no live-probe instructions.
+0. **Run and telemetry initialization** — resolve mode, authorization, scope, budget, accepted risks, and Outbox capability; call `init-run` before launching any Agent.
+1. **Reconnaissance** — map the source, trust boundaries, local build paths, companion selections, prior evidence, and initial deterministic coverage ledger with [RECONNAISSANCE.md](RECONNAISSANCE.md); record `DB-P1-01` through `DB-P1-05`.
+2. **Coverage-led hunting waves** — assign isolated hunters from the ledger, freeze the source-only hypothesis/score/attack-plan checkpoint before targeted validation, then collect actual observations and candidate results with [HUNTING.md](HUNTING.md), [ATTACK-CLASSES.md](ATTACK-CLASSES.md), and the selected domain companions; record `DB-P2-01` through `DB-P2-07`.
+3. **Candidate validation** — consolidate fingerprints and give every candidate to a fresh source verifier as defined in [VALIDATION-AND-REPORTING.md](VALIDATION-AND-REPORTING.md); record immutable validation inputs, observations, and decisions.
+4. **Structured output** — write all final `confirmed`, `needs_validation`, and `rejected` records to `findings.json`; validate it with `report-schema.json` and `validate-findings.cjs`, validate the coverage claim with `validate-coverage-ledger.cjs`, and record the exact file/tool hashes.
+5. **Independent record verification** — use fresh agents to verify final source claims and reconcile corrections or state changes with append-only finding revisions.
+6. **Target-neutral report** — derive `REPORT.md`, `FINDINGS-DETAIL.md`, and `NEEDS-VALIDATION.md` from the final records, snapshot their metadata, freeze the research-input boundary, and finalize audit and telemetry statuses separately.
 
 Do not end the run before one of exactly two terminal states: (a) all Phase 6 artifacts are written and both validators pass, or (b) `run_status: "incomplete"` is recorded with its exact reason and the gap is disclosed in the report. Never stop mid-phase.
 

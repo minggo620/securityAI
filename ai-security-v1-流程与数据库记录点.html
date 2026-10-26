@@ -18,7 +18,7 @@
   <header class="hero">
     <div><h1>ai-security-v1 流程与数据库记录点</h1><p>从完整审计启动，到侦察证据、漏洞假设、攻击计划、受限验证、独立裁决和研究指标。点击节点查看写入表、事务、幂等键和 Skill 依据。</p></div>
   </header>
-  <div class="notice"><strong>设计规范，不是运行日志。</strong> 第一版已由 49 表概念模型收敛为 36 张核心事务表；历史 1.1.0 DDL 已作废。机器可读契约以 <a href="ai-security-v1-telemetry-contract/README.md">telemetry contract 1.3.0</a> 为准，项目远程 MySQL 8.0.26 是目标兼容基线；远程建表仍需单独明确 DDL 授权。页面离线运行，不连接网络、API 或数据库。</div>
+  <div class="notice"><strong>流程规范与已实现记录点，不是某一次运行日志。</strong> 数据库结构为 1.3.0-core（36 张核心事务表），Skill/事件/Agent 过程协议为 1.4.0；实现入口见 <a href="ai-security-v1/TELEMETRY.md">TELEMETRY.md</a> 和 <a href="ai-security-v1/scripts/telemetry/cli.cjs">telemetry CLI</a>。机器契约见 <a href="ai-security-v1-telemetry-contract/README.md">telemetry contract</a>。页面离线运行，不连接网络、API 或数据库。</div>
   <section class="stats" aria-label="设计规模">
     <div class="stat"><b id="stat-points">—</b><span>流程记录点</span></div>
     <div class="stat"><b id="stat-tables">—</b><span>数据库表</span></div>
@@ -178,24 +178,44 @@ const manifest=[
 ['CLIENT-SIDE.md','613f6b98f86083e045525c5b60154ffdab122bac35f1e05eb17488e6e453370c'],
 ['CLOUD-AND-DEPLOYMENT.md','3c80f3088be22345e07b057c056d6ed99fe2b0304f794398964f7ccd5a496ca3'],
 ['DATA-ISOLATION-AND-LIFECYCLE.md','307dcb3e24d292715c4a041190e7bb135646a37eb6187619ae01d000a634a4ad'],
-['DATABASE.md','bb24bec4eb3c53e94fb1c0add0231682997f6cafa805669638d3e6282184c3bc'],
+['DATABASE.md','198725a1640455b36fbf5bdb47d648194823d94b5568ce872da5f48933e5c71f'],
 ['DESKTOP-MOBILE-AND-LOCAL-IPC.md','58eae8ee0ca6a46611c501ec5a3ab47fdff88dd7db0d8d74789bbf8bb19d8cb2'],
-['HUNTING.md','71c121decea1322c47c718f6e110f1a892980bb4266bd7ac55ef043a213ade09'],
+['HUNTING.md','e2fbaafb337ac02c7c856d5f9d7f29a6cc02f76b3b330adcbf3838ee6ec32e71'],
 ['MEMORY-SAFETY-AND-BINARY.md','7c8b0dccfb35315cca2455509674d49632b2fe37e1f3aac16c1a496a7e9924a7'],
 ['PROTOCOLS-RPC-AND-MESSAGING.md','8b73816fa5b3697c9c40977f0c836b40f01d6e81929ff2720fe83ce089e9a619'],
-['RECONNAISSANCE.md','02ca887aca84de8ae137f1891bd2f0a54f28d3fa6da92a27f54734382b3381a2'],
+['RECONNAISSANCE.md','cecf13929de44ca039e48882a0715ae1204ab8181349c161437eebb40354a6bf'],
 ['RESOURCE-EXHAUSTION-AND-AVAILABILITY.md','4326fab5c92a0b4c420a70196254040105cd794026562130b59bf1a6db3e4baa'],
-['SKILL.md','b07d1dcc13e8dc5c2a6355021db5470dc0c2874852d8378ae72094cce01a1f6e'],
+['SKILL.md','5d1a3ae68529540a3bd05b3a1db0e77ac6fcd88b2eb1da96251fc8d4140f6ed2'],
 ['SUPPLY-CHAIN-AND-RELEASE.md','f372e919940e335468ba1ae09f99026c3986a345f7fe26f8068f132e199f52a5'],
-['VALIDATION-AND-REPORTING.md','b892470cb89bb31f33403e050d4bdfbe2cdaef940ade1496fa65e32b2e129449'],
+['TELEMETRY-BASELINE.md','06902018c76f4c4ca7fead691791d2c31c51a2e5d8c7e0539b6eb4b6de5c8ca3'],
+['TELEMETRY.md','bbc88c6237b244a04e7f17f1cb42a805e7e707e49990d96e027c4d51782db26f'],
+['VALIDATION-AND-REPORTING.md','8282ab706f85c2d132e3da9b1066dcc9c7e64b77ab5fe56acb65c87b51ac32ef'],
 ['WEB-PROTOCOL-AND-AUTH.md','4f3066dffa23c5635859187be9b96c32f2aff29a688186b91ff0c63e47d62b5c'],
 ['agents/openai.yaml','a88ecb7f985f249160fd68ad7335e8fb62d8c583672855fedf643211e4de0d74'],
+['references/telemetry/agent-process-extension.schema.json','337e2299abd762e8b848d8d31597409acbdfcebd572699e652ecb29b7ed44af2'],
+['references/telemetry/contract-manifest.json','9644af29a79fb65fdc91347cac48f3a272ac1be900ece4e41022f8d52ddea4ea'],
+['references/telemetry/event-envelope.schema.json','afbc9423c25a15471e8b97a4e13933d5142ef8cf47ae6b5288beb498939026ee'],
+['references/telemetry/projection-map.json','e266dafb21d05e90f8a77d71ea62ec2b48a6e8e5e24bfab89dfa5ec794126094'],
+['references/telemetry/telemetry-config.schema.json','a394a4ff391d533f987413c1a456371affd755eed6c0fc87b06feb2bd54e422d'],
 ['report-schema.json','6575c9de4a62255699ea052ebf9a49ebfb373a32891bcd89af6f55cc84b35519'],
+['scripts/telemetry/canonical-json.cjs','e66d7150b9df5cf5ade2da90dd2f26e85815a9a568486460f3605538ee22fa7b'],
+['scripts/telemetry/cli.cjs','04218a00110f403ee53866a3f74ba0dc8881b85e8a06075247de50b5d558b089'],
+['scripts/telemetry/config.cjs','3345d5179376c037af5d0c4aaf8de2944e2116bfdf7e42a510b36ed8e47f2566'],
+['scripts/telemetry/event-builder.cjs','a258c05720b4555f60cbd3af7adc89d367da45f344e2302ebbf26459a5273e61'],
+['scripts/telemetry/mysql-writer.cjs','f2f5c1786f699575d3bf6e64c08b55a85d97891744526c35639beefc0b30c235'],
+['scripts/telemetry/outbox.cjs','3adad79009102ab9153f78debdb72508df07aa6225c5379d9b4c8b23c7fc167b'],
+['scripts/telemetry/projection.cjs','84d5fdb2583a920ea83082e59699bcc88b229d8b1b303ca3e8e810240bdda83f'],
+['scripts/telemetry/redactor.cjs','682af6cb2b88238439ef5689e8b9461af24bdf9c43b136fe3e51666dbd185959'],
+['scripts/telemetry/schema-validator.cjs','bf96eee9b3fdae1570994573f4b62de3bfd88de1bca43bf359926463c447eea8'],
+['scripts/telemetry/tests/remote-lineage-acceptance.cjs','36a88d0f6cdad66626e22ac5b0cb237d39be2b880c4235bb679d23c3ca788614'],
+['scripts/telemetry/tests/telemetry.test.cjs','a4e00bdc7d933cf92bdf049164dc7e2deaad006c6609321166966efe1da0fb8f'],
+['scripts/telemetry/ulid.cjs','ce7ae43a60ddd0b9495d69d0e65328373e0d052faee315d7bd68dfe6f4e696cf'],
 ['validate-coverage-ledger.cjs','2eb280bd2e33c002916f86db9b29f9edfedb6454e5db973c766290465b868ac8'],
 ['validate-coverage-ledger.test.cjs','cfb9df26b03469a4279a70e7664a2a5434dd6f8c2c204e91f9b0aeb9dd71e648'],
 ['validate-findings.cjs','e85f232e36bfac0f866f244da50376692d6b45c690beadcb00608b0e6c8b5283'],
 ['validate-findings.test.cjs','b92001117a92c4161d43777a0ba2fa182a8a4d97f2304cc8c0cee5331497b73b']
 ];
+const manifestSha256='a0f1b7cd9ce2e23bef9c7831b9bb3381e6ba68ae8f5ce7e8292534984fc463af';
 const state={tab:'flow',selected:points[0],query:'',source:'all',phase:'all',role:'all',op:'all',hypothesis:'all',table:'all'};
 const flowGrid=document.getElementById('flowGrid'),detail=document.getElementById('detail');
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -209,7 +229,7 @@ function writeHtml(n){const writes=n.writes||Object.fromEntries(n.tables.map(t=>
 function renderDetail(){const n=state.selected;if(n.kind==='table'){const m=tableMeta[n.title],related=points.filter(p=>p.tables.includes(n.title));detail.innerHTML=`<h2>${esc(n.title)}</h2><p>${esc(n.action)}</p><div class="badges"><span class="badge">PK ${esc(m.pk)}</span><span class="badge">${related.length} 个流程节点</span></div><h3>主要字段</h3><ul class="field-list">${m.fields.map(f=>`<li><code>${esc(f)}</code></li>`).join('')}</ul><h3>外键与基数</h3><div class="relation-list">${m.fks.length?m.fks.map(x=>`<div class="relation">${esc(x)}</div>`).join(''):'<div class="muted">无或未在此摘要列出，以 DDL 为准。</div>'}</div><h3>所有相关流程节点</h3><div class="reverse-list">${related.map(p=>`<button class="reverse-row table-btn" data-id="${p.id}"><strong>${p.id} · ${esc(p.title)}</strong><br><span class="muted">${p.phase} / ${p.lane} / ${p.op}</span></button>`).join('')||'<div class="muted">无显式流程节点。</div>'}</div><h3>依据</h3><div class="source">${refHtml(n.ref)}</div>`;}else{detail.innerHTML=`<h2>${esc(n.id?n.id+' · ':'')}${esc(n.title)}</h2><div class="badges"><span class="badge ${n.source.toLowerCase()}">${n.source}</span><span class="badge">${esc(n.phase||'模型')}</span><span class="badge">${esc(n.lane||'表')}</span><span class="badge">${esc(n.op)}</span><span class="badge">${esc(n.stage)}</span></div><h3>做什么</h3><p>${esc(n.action)}</p><h3>事务边界</h3><p>${esc(n.tx)}</p><h3>表与具体字段</h3>${writeHtml(n)}<h3>幂等键</h3><div class="source">${esc(n.key)}</div><h3>失败与补偿</h3><p>${esc(n.failure)}</p><h3>依据</h3><div class="source">${refHtml(n.ref)}</div>`;}bindNodes();}
 function renderDomains(){const edges=Object.entries(tableMeta).flatMap(([t,m])=>m.fks.map(f=>`<div class="relation"><button class="tagbtn" data-table="${t}">${t}</button> ${esc(f)}</div>`)).join('');document.getElementById('domainGrid').innerHTML=domains.map(d=>`<section class="er-domain"><h3>${d.name}</h3>${d.tables.map(t=>{const m=tableMeta[t];return `<button class="er-table table-btn" data-table="${t}"><strong><code>${t}</code></strong><span class="muted">PK ${esc(m.pk)} · ${m.fks.length} FK</span><br><span class="muted">${esc(tableDescriptions[t])}</span></button>`}).join('')}</section>`).join('')+`<section class="er-domain" style="grid-column:1/-1"><h3>外键关系边与基数</h3><div class="relation-list">${edges}</div></section>`;bindNodes();}
 function renderHypothesis(){document.getElementById('hypothesisChain').innerHTML=hypothesisStages.map((x,i)=>`${i?'<span class="chain-arrow">→</span>':''}<button class="chain-step table-btn" data-table="${x[1]}"><strong>${x[0]}</strong><code>${x[1]}</code><br><span class="muted">${x[2]}</span></button>`).join('');bindNodes();}
-function renderLineage(){document.getElementById('lineage').innerHTML=lineageEdges.map(x=>`<div class="relation"><code>${esc(x[0])}</code> → <strong>${esc(x[1])}</strong> → <code>${esc(x[2])}</code><br><span class="muted">${esc(x[3])}</span></div>`).join('');document.getElementById('manifest').innerHTML=manifest.map(x=>`<div class="manifest-row"><a class="ref-link" href="ai-security-v1/${x[0]}">${x[0]}</a><br><code>${x[1]}</code></div>`).join('');bindNodes();}
+function renderLineage(){document.getElementById('lineage').innerHTML=lineageEdges.map(x=>`<div class="relation"><code>${esc(x[0])}</code> → <strong>${esc(x[1])}</strong> → <code>${esc(x[2])}</code><br><span class="muted">${esc(x[3])}</span></div>`).join('');document.getElementById('manifest').innerHTML=`<div class="manifest-row"><strong>完整清单</strong> · ${manifest.length} 个文件<br><code>${manifestSha256}</code></div>`+manifest.map(x=>`<div class="manifest-row"><a class="ref-link" href="ai-security-v1/${x[0]}">${x[0]}</a><br><code>${x[1]}</code></div>`).join('');bindNodes();}
 function renderMetrics(){document.getElementById('metricRows').innerHTML=metrics.map(r=>`<tr>${r.map(x=>`<td>${esc(x)}</td>`).join('')}</tr>`).join('');}
 function applyFilters(){const q=state.query.toLowerCase();let shown=0;document.querySelectorAll('.node').forEach(b=>{const n=points.find(x=>x.id===b.dataset.id);const ok=(!q||JSON.stringify(n).toLowerCase().includes(q))&&(state.source==='all'||n.source===state.source)&&(state.phase==='all'||n.phase===state.phase)&&(state.role==='all'||n.lane===state.role)&&(state.op==='all'||n.op===state.op)&&(state.hypothesis==='all'||n.stage===state.hypothesis)&&(state.table==='all'||n.tables.includes(state.table));b.classList.toggle('filtered',!ok);b.tabIndex=ok?0:-1;if(ok)shown++;});document.getElementById('resultCount').textContent=`${shown} / ${points.length} 个节点`;}
 function switchTab(name){state.tab=name;document.querySelectorAll('.tab').forEach(b=>{const active=b.dataset.tab===name;b.setAttribute('aria-selected',String(active));b.tabIndex=active?0:-1;});document.querySelectorAll('.panel').forEach(p=>p.hidden=p.id!==`panel-${name}`);}

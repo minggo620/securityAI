@@ -1,6 +1,6 @@
 {
-  "schema_version": "1.3.0",
-  "database_contract": "1.3.0-core-draft",
+  "schema_version": "1.4.0",
+  "database_contract": "1.3.0-core",
   "policy": {
     "full_snapshot_rule": "Every authoritative Skill JSON/Markdown artifact and every raw Agent core result is stored after redaction in audit_payload and, when it is a retained file, in audit_artifact. Normalized columns are query projections, not the only copy.",
     "unknown_source_field": "reject_contract_version_and_do_not_guess",

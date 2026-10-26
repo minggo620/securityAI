@@ -1,18 +1,18 @@
 # ai-security-v1 审计过程数据库逻辑模型
 
-> 状态：架构复核修订版；**尚未在远程数据库执行**。  
+> 状态：第一版核心模型已部署并完成 Skill 1.4.0 对接验收；本轮未执行新 DDL。
 > 分析对象：`./ai-security-v1/`。  
-> Skill 基线清单 SHA-256：`bac04717601a140814c5963b6277c1d3ab8df6225184c0c49a8a4721103effa0`（算法见第 12 节）。  
+> Skill 基线清单 SHA-256：`a0f1b7cd9ce2e23bef9c7831b9bb3381e6ba68ae8f5ce7e8292534984fc463af`（41 个文件；算法见第 12 节）。
 > 目标环境：MySQL 8.0.26，数据库 `ai_security`，新对象统一使用 `audit_` 前缀；不修改现有 `test` 表。  
-> Schema 版本：`1.3.0-core-draft`。
+> 数据库结构版本：`1.3.0-core`；Telemetry 协议版本：`1.4.0`。
 
-> 可执行候选契约包：[`ai-security-v1-telemetry-contract/`](./ai-security-v1-telemetry-contract/README.md)。其中的 `001_ai_security_core_schema.sql` 由生成器产生并通过静态一致性检查和远程 MySQL 8.0.26 非执行解析；正式建表使用项目远程数据库，并以用户单独明确 DDL 授权为前提。
+> 机器契约包：[`ai-security-v1-telemetry-contract/`](./ai-security-v1-telemetry-contract/README.md)。其中数据库结构已在远程 MySQL 8.0.26 部署；Skill 的 1.4.0 过程协议、Outbox、Writer 和 P0–P6 入口位于 [`ai-security-v1/`](./ai-security-v1/)；本轮不执行 DDL。
 
 ## 0. 架构复核结论与第一版收敛范围
 
 原 `1.1.0-draft` 将运行状态库、事件存储、规范化业务投影、Writer 分布式协调和研究分析仓库一次性建成 49 张表、675 个字段、123 个外键。它可以作为长期概念目录，但不适合作为第一版直接部署：一个业务事件需要同步维护 payload、event、字段 provenance、专用投影和远程 checkpoint，故障组合会反向威胁 P1–P6 的稳定执行。
 
-`1.3.0-core-draft` 采用“核心事实库 + 可重放事件 + 后置研究分析”的边界：
+`1.3.0-core` 采用“核心事实库 + 可重放事件 + 后置研究分析”的边界：
 
 - 第一版核心模型实现 36 张事务表；保留假设版本与多覆盖单元关联、验证前评分、攻击计划/执行、候选观察、独立验证、Finding 修订和人工标注。
 - 派生指标不进入审计事务；通过带版本的离线查询或研究数据集重算。
@@ -90,13 +90,13 @@ audit_metric_value
 | 标记 | 含义 | 示例 |
 | --- | --- | --- |
 | `S` | 当前 Skill 已明确规定的结构或动作 | `coverage-ledger.json`、Finding 三种裁决 |
-| `O` | 平台可观察、但当前 Skill 没有统一契约 | Agent 启停、工具退出码、实际提示词 |
-| `P` | 本方案拟新增的过程采集机制 | 假设版本、验证前概率、Outbox 事件 |
+| `O` | 平台可观察事件；1.4.0 协议能记录时按可用性保存 | Agent 启停、工具退出码、实际提示词 |
+| `P` | 1.4.0 协议新增并已实现的过程采集机制 | 假设版本、验证前概率、Outbox 事件 |
 | `D` | 从原始记录计算的派生数据 | 命中率、Brier Score、平均验证成本 |
 
 禁止采集隐藏思维链。所谓“分析思路”仅指 Agent 明确输出的结构化主张、证据、反例、决策理由和实际动作。禁止保存凭据、认证状态、完整环境变量、无关源码和未经脱敏的工具输出。
 
-当前 Skill 明确规定数据库模式与审计模式分离（`SKILL.md:10-18`）。因此，**完整审计只默认允许在审计输出目录内建立本地 Outbox，不默认授权连接或同步到远程 MySQL**。远程同步必须由用户单独明示授权，或由可审计的组织政策授权，并记录授权范围、目的、保留策略和撤回状态。
+当前 Skill 的完整审计默认建立本地 `telemetry/outbox.jsonl`，数据库仍不参与当前审计裁决。远程同步必须由用户单独明示授权，或由可审计的组织政策授权，并记录授权范围、目的、保留策略和撤回状态。Guidance 模式不自动建立 run 或 Outbox。
 
 ## 2. 总体模型
 
@@ -311,7 +311,7 @@ Finding revision: draft → independently_decided → final_verified | replaced 
 
 下方代码块是原 `1.1.0-draft` 的历史候选 DDL，仅用于追溯字段来源，**已经被第 0 节的收敛决策取代，不得复制执行，也不得作为迁移输入**。它仍包含被移出的 15 张表，以及旧的单关系、候选顺序和 P5 血缘问题。
 
-`1.3.0-core-draft` DDL 已在 [`ai-security-v1-telemetry-contract/001_ai_security_core_schema.sql`](./ai-security-v1-telemetry-contract/001_ai_security_core_schema.sql) 生成，仅含 36 张核心表，并已通过静态契约检查与项目远程 MySQL 8.0.26 的 40 条非执行 `PREPARE` 解析。36 张核心表已经在远程数据库创建，227 个 utf8mb4 文本列和 36 个表默认排序规则已经统一为 `utf8mb4_general_ci`；两个只读视图和 schema seed 仍按最小建表授权暂未应用。下方历史块不再需要、也不应“替换”；执行基线始终是版本化契约包。
+`1.3.0-core` DDL 已在 [`ai-security-v1-telemetry-contract/001_ai_security_core_schema.sql`](./ai-security-v1-telemetry-contract/001_ai_security_core_schema.sql) 冻结，仅含 36 张核心表。36 张核心表已经在远程数据库创建，227 个 utf8mb4 文本列和 36 个表默认排序规则统一为 `utf8mb4_general_ci`；两个只读视图和 schema seed 在第一版标记为 `not_required_v1`。下方历史块不再需要、也不应“替换”；执行基线始终是版本化契约包。
 
 ```text
 -- ai-security-v1 telemetry schema 1.1.0-draft
@@ -1576,8 +1576,8 @@ LEFT JOIN audit_human_adjudication ha ON ha.adjudication_id=(
 
 ## 10. 安全与治理
 
-- 数据库 Writer 使用最小权限专用账号；迁移账号与运行时写入账号分离。
-- 当前配置账号的现有权限高于运行时 Writer 所需权限，不得直接作为正式 Writer 账号。
+- 最小权限专用账号仍是推荐工业基线；第一版使用现有广权限账号属于用户明确接受的 `broad_database_account` 风险，不得标为安全通过。
+- 应用 Writer 仍只允许 event/table/column allowlist、prepared INSERT、CAS UPDATE、幂等 SELECT 和事务控制；明确禁止 DELETE、DDL、权限语句、存储程序、动态表名和其他数据库。
 - 连接凭据只来自运行时 secret/env/受保护 option file，不写入 Skill、SQL、Outbox、文档或日志。
 - 运行时账号不得 `GRANT`、不得访问其他数据库、不得执行任意 DDL。
 - 事件、版本、attempt、revision 表对 Writer 只授予 `INSERT/SELECT`；可变投影的 `UPDATE` 必须是 `row_version` 比较交换（CAS），并与状态事件同事务。
@@ -1598,12 +1598,12 @@ LEFT JOIN audit_human_adjudication ha ON ha.adjudication_id=(
 
 ## 13. 实施前必须完成的验证
 
-1. 已完成：生成 `1.3.0-core-draft` 候选 DDL，且不从第 6 节直接复制执行历史 `1.1.0-draft`。
+1. 已完成：生成并部署 `1.3.0-core` DDL，且不从第 6 节直接复制执行历史 `1.1.0-draft`。
 2. 已完成：静态验证候选 DDL 恰好包含 36 张核心表，且 15 张延期表未进入迁移；项目远程 8.0.26 已只读解析 36 个 `CREATE TABLE` 和 4 个 `ALTER TABLE`。
-3. 已完成：直接在项目远程 `ai_security` 创建 36 张核心表并完成排序规则迁移；视图、schema seed、权限和合成数据验收仍待单独授权与执行；不以本地 5.7 结果代替。
-4. 执行 FK/CHECK/视图回归、乱序重放、重复投递、半行 Outbox、CAS 冲突与脱敏失败测试。
-5. 以最小权限账号运行权限验收；任何 `DDL/GRANT/DELETE` 对运行时 Writer 都必须失败。
+3. 已完成：直接在项目远程 `ai_security` 创建 36 张核心表并完成排序规则迁移；视图和 schema seed 为 `not_required_v1`；远程 P0、幂等重放和完整血缘合成验收已执行。
+4. 已完成核心 FK/CHECK、重复投递、Outbox 半行恢复、CAS SQL、脱敏和远程完整血缘验收；更大规模乱序/容量矩阵作为后续强化。
+5. 第一版以应用 Writer allowlist 限制 SQL；数据库账号最小权限是已知、已接受但未消除的工业风险。
 6. 完成容量基线：每 run 事件数、payload 字节、月增长、索引放大、保留清理窗口和分区阈值。
 
-本模型是逻辑实施基线；契约包中的 DDL 是唯一可验证的执行候选；第 6 节历史 DDL 不是执行基线。当前 Skill 尚未产生这些表或字段，远程 `ai_security` 中已有 36 张 `audit_*` 核心表，均使用 `utf8mb4_general_ci`。
+本模型是逻辑实施基线；契约包中的 DDL 是唯一数据库结构基线；第 6 节历史 DDL 不是执行基线。当前 Skill 已实现 1.4.0 本地 Outbox、远程 Writer、五个 Parent 接口和 P0–P6 Agent/文件记录协议；远程 `ai_security` 中已有 36 张 `audit_*` 核心表，均使用 `utf8mb4_general_ci`。
 

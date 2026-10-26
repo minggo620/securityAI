@@ -4,6 +4,8 @@
 
 The parent assigns `planned` ledger units to `general` agents. Use enough focused hunters to cover the units without combining unrelated boundaries. One hunter may own closely related units in one subsystem; no unit may be silently unassigned because of an agent-count limit — a unit the budget cannot reach is explicitly `deferred` with reason `budget_cannot_reserve_critics_and_validation`.
 
+When telemetry is enabled, record `hunter.assigned` and `agent.task_started` only after the ledger assignment is valid (`DB-P2-01`). A Hunter is one logical Agent task with two model checkpoints. Both checkpoints count against a strict invocation budget. The first freezes source-only hypotheses, validation-before scores, and attack plans; only after the Parent accepts and records that checkpoint may the second perform targeted source/local checks.
+
 When a budget or profile caps hunter count, assign units in priority order and record the ordering rationale in the ledger. Rank by: (1) unauthenticated or lowest-trust entry surfaces before authenticated ones; (2) boundaries protecting the most valuable resources (credentials, cross-tenant data, code execution, release authority); (3) prior-run gaps, revalidation targets, and changed source before same-source re-passes; (4) units whose class historically yields confirmed findings for this target type over speculative ones. Ties break lexicographically by `coverage_id` so runs stay deterministic.
 
 Before launch, the parent changes assigned units to `in_progress`, sets a canonical lowercase `agent_id`, and creates that agent's `scratch/` and parent-owned `artifacts/`. Hunters read source and parent-provided context, write only to their unique `scratch/`, and return one structured result through the Task tool. They never write retained artifacts or edit target source, `architecture.md`, `coverage-ledger.json`, `findings.json`, or another agent's files.
@@ -12,7 +14,7 @@ Before launch, the parent changes assigned units to `in_progress`, sets a canoni
 
 Every hunter prompt contains these parts in this order:
 
-1. A two-sentence role preamble: the hunter's goal is to find source-grounded security invariant failures in its assigned units, and it must return exactly one JSON object matching the structured-result contract at the end of this prompt.
+1. A two-sentence role preamble: the hunter's goal is to find source-grounded security invariant failures in its assigned units. With telemetry enabled it first returns exactly one `hunter_plan` checkpoint and performs no targeted local validation; the Parent then sends the accepted plan back for the `hunter_result` checkpoint. With telemetry off, use the original one-result behavior.
 2. `architecture.md` verbatim.
 3. Assigned coverage IDs, subsystem, boundary, repository-relative starting paths, and each unit's assignment block map from `coverage-ledger.json`.
 4. The exact selected blocks, copied verbatim: each selected ordinary attack-class block from `ATTACK-CLASSES.md`, and from each selected companion its `Core discipline`, each chosen attack-class subsection, `Universal moves`, and `Validation rules`. Ordinary blocks are self-contained and carry no companion-style `Core discipline`, `Universal moves`, or `Validation rules` sections. Do not send block or companion names alone.
@@ -23,6 +25,43 @@ Every hunter prompt contains these parts in this order:
 9. The unique scratch/artifact paths, safe agent ID, predeclared promotion allowlist and byte limits, and the structured-result contract, including the Structured hunter result block below and the `confirmed` and `needs_validation` branches of `report-schema.json` copied verbatim.
 
 A prompt may select several companion blocks when the same path crosses several domains. Keep their constraints together. Scope is the hunter's coverage obligation, not permission to duplicate excluded work. If an unexpected different boundary appears, return it under `uncovered` so the parent creates a stable ledger unit and assigns it in the next wave.
+
+## Telemetry checkpoint 1: source-only hypothesis and attack plan
+
+Before running a targeted local test, process, fixture, browser, emulator, policy evaluation, or other candidate-confirming action, return one JSON object:
+
+```json
+{
+  "checkpoint": "hunter_plan",
+  "_process": {
+    "schema_version": "1.4.0",
+    "result_type": "hunter_plan",
+    "agent_id": "assigned-agent-id",
+    "explicit_rationale": "concise evidence-backed prioritization, not hidden reasoning",
+    "evidence_refs": [],
+    "hypotheses": [],
+    "hypothesis_relations": [],
+    "attack_plans": [],
+    "observations": []
+  }
+}
+```
+
+Each hypothesis version names its local key, linked coverage IDs, attacker principal/capabilities, controlled input, entrypoint, security invariant, suspected failed control, predicted trace, trust boundary, affected resource, predicted result, preconditions, unknown facts, alternative explanations, evidence refs, status, revision reason, and score. The score freezes currently visible evidence and uses `[0,1]` values for predicted probability, potential impact, coverage value, information gain, and normalized validation cost. Compute:
+
+```text
+priority_score =
+(predicted_probability * potential_impact + coverage_value + information_gain)
+/ (1 + normalized_validation_cost)
+```
+
+Use `formula_name=hypothesis-research-baseline` and `formula_version=1.0`. This score is a research observation and does not reorder the deterministic coverage ledger. Never recompute it from the later result.
+
+Each attack plan names `source_only|bounded_local|owner_observed|mixed`, objective, stop condition, expected boundary result, and ordered steps. The Parent validates and records `hypothesis.created|revised` (`DB-P2-02`) and `attack.plan_created` (`DB-P2-03`), freezing the evidence cutoff event, before authorizing checkpoint 2. An Agent never creates ULIDs, events, projections, SQL, or database keys.
+
+## Telemetry checkpoint 2: actual investigation and candidate result
+
+For each planned step, return an observation with hypothesis key, plan version and ordinal, actual mode (`source_only|local|not_executed`), actual input or null, expected and observed result, relation to claim (`supports|refutes|neutral|unresolved`), evidence refs, and status (`succeeded|failed|blocked|skipped`). Preserve blocked and skipped steps; never present them as executed attacks. The Parent records them with `attack.step_observed` (`DB-P2-04`) before consolidating candidates.
 
 #### Core hunting method — include in every hunter prompt
 
@@ -201,7 +240,15 @@ Return exactly one JSON object, with no surrounding prose:
       "starting_paths": ["repo/relative/path"],
       "reason": "why this needs its own deterministic coverage unit"
     }
-  ]
+  ],
+  "_process": {
+    "schema_version": "1.4.0",
+    "result_type": "hunter_result",
+    "agent_id": "assigned-agent-id",
+    "explicit_rationale": "concise evidence-backed result rationale",
+    "evidence_refs": [],
+    "observations": []
+  }
 }
 ```
 
@@ -214,9 +261,9 @@ Every assigned coverage ID appears exactly once in `units`. A `covered` unit nee
 
 ## Parent consolidation and ledger update
 
-The parent validates each unit result, maps it to exactly one assigned `coverage_id`, and updates only that ledger unit. Reject duplicate or absent IDs, unsafe unit or check agent IDs, source checks with artifacts, and local artifacts that trusted parent-side code did not promote into the check owner's artifacts subtree. Copy the unit's `reviewed_paths`, its `checks` into the unit's `local_checks`, linked artifact paths, candidate fingerprints, and unresolved facts into the ledger. Retain each hunter's `hardening` list in a parent bookkeeping field on the relevant units (outside the semantic fields) so Phase 6 can report it. A failed, malformed, or unsupported conclusion leaves that unit `planned` for reassignment. Untouched budget/profile units become unassigned `deferred` units with empty evidence and a reason; do not hide partial evidence in `deferred`. Run `validate-coverage-ledger.cjs` after the update; an invalid ledger cannot drive another assignment. This per-unit contract allows one hunter to close one unit while returning a candidate or blocker for another.
+The parent strips `_process`, validates each core unit result, maps it to exactly one assigned `coverage_id`, and updates only that ledger unit. Reject duplicate or absent IDs, unsafe unit or check agent IDs, source checks with artifacts, and local artifacts that trusted parent-side code did not promote into the check owner's artifacts subtree. Copy the unit's `reviewed_paths`, its `checks` into the unit's `local_checks`, linked artifact paths, candidate fingerprints, and unresolved facts into the ledger. Retain each hunter's `hardening` list in a parent bookkeeping field on the relevant units (outside the semantic fields) so Phase 6 can report it. A failed, malformed, or unsupported core conclusion leaves that unit `planned` for reassignment. Under `best_effort`, a malformed sidecar is discarded without changing a valid core result; under `required`, retry within budget or finish incomplete. Untouched budget/profile units become unassigned `deferred` units with empty evidence and a reason; do not hide partial evidence in `deferred`. Run `validate-coverage-ledger.cjs` after the update; an invalid ledger cannot drive another assignment.
 
-Consolidate candidate entries by fingerprint and then by root cause. One root cause that exposes several entry paths or effects is one candidate with the strongest complete trace. Related but independent missing controls use separate fingerprints. Record duplicate fingerprints in the relevant ledger unit and do not send duplicate candidates to validation.
+Record each Hunter proposal first as an independent `candidate.observed` with no stable candidate ID. Then consolidate candidate entries by fingerprint and root cause. One root cause that exposes several entry paths or effects is one candidate with the strongest complete trace. Related but independent missing controls use separate fingerprints. Preserve duplicate observations, create the stable candidate only after consolidation with `candidate.consolidated`, and link every observation, hypothesis version, and coverage unit (`DB-P2-05`). Do not send duplicate candidates to validation.
 
 ## Coverage-critic waves
 
@@ -238,13 +285,27 @@ Immediately after each hunter wave, spend the reserved invocation on one fresh `
   ],
   "reassign_ids": ["existing-id-that-did-not-close"],
   "resolved_prior_leads": ["fingerprint"],
-  "stop": false
+  "stop": false,
+  "_process": {
+    "schema_version": "1.4.0",
+    "result_type": "critic",
+    "agent_id": "assigned-critic-id",
+    "explicit_rationale": "source-backed coverage rationale",
+    "evidence_refs": [],
+    "observations": [],
+    "critic_review": {
+      "proposed_missing_unit_count": 0,
+      "reassign_ids": [],
+      "resolved_prior_leads": [],
+      "stop_assessment": false
+    }
+  }
 }
 ```
 
 The critic checks for unmapped entry points, unchecked parallel paths, missing lifecycle modes, selected companion classes without a unit, unjustified exclusions, units closed without paths/checks, and prior `needs_validation` or changed-source gaps that no unit addresses. It proposes coverage, not findings. `stop` is the critic's own assessment: `true` only when it accepts no `missing_units` and no `reassign_ids`; the parent's loop condition below, not `stop` alone, decides whether another wave runs. For each fingerprint in `resolved_prior_leads`, the parent marks the linked unit or prior-lead entry resolved and records the critic's source-backed reason.
 
-The parent rejects proposed units outside the review scope or source/local boundary, derives canonical IDs for accepted units, and deduplicates them against current units. A prior same-source completed unit may supply evidence; prior `deferred`, `blocked`, `out_of_scope`, or changed-source units become current work and never suppress an accepted unit. Fail rather than merge a canonical ID collision. For each legitimate `reassign_id` with live `blocked`, `covered`, or `candidate` evidence, append that exact terminal record to the unit's `attempts` with the critic's source-backed `reassignment_reason`. Preserve its owner, checks, artifacts, fingerprints, and unresolved facts in that archive. Increment the live `wave`; the next hunter must be a fresh owner and receives an `in_progress` unit with empty live evidence. The hunter's terminal result writes only its new evidence into the live fields. Never copy an archived owner's checks or artifacts into the new live attempt. Sort IDs and validate the ledger before another assignment. In `standard` and `deep`, when the post-wave critic reports no accepted `missing_units` or legitimate `reassign_ids` and no `planned` units remain, spend the separately reserved invocation on a distinct final-clean critic. Complete coverage only when that critic also returns no accepted work. If it finds work, queue it and repeat the wave, post-wave critic, and final-clean process. If time or resources force an early stop, mark every untouched unit `deferred`, preserve the critic's reason, and disclose the gap in the report. Never use a silent wave or agent cap as evidence of complete coverage.
+The Parent strips `_process`, validates the Critic core result, and records the redacted task/result with `critic.review_completed` (`DB-P2-06`). It rejects proposed units outside the review scope or source/local boundary, derives canonical IDs for accepted units, and deduplicates them against current units. A prior same-source completed unit may supply evidence; prior `deferred`, `blocked`, `out_of_scope`, or changed-source units become current work and never suppress an accepted unit. Fail rather than merge a canonical ID collision. For each legitimate `reassign_id` with live `blocked`, `covered`, or `candidate` evidence, append that exact terminal record to the unit's `attempts` with the critic's source-backed `reassignment_reason`. Preserve its owner, checks, artifacts, fingerprints, and unresolved facts in that archive. Increment the live `wave`; the next hunter must be a fresh owner and receives an `in_progress` unit with empty live evidence. The hunter's terminal result writes only its new evidence into the live fields. Never copy an archived owner's checks or artifacts into the new live attempt. Record the archive and reassignment with `coverage.reopened` (`DB-P2-07`), sort IDs, and validate the ledger before another assignment. In `standard` and `deep`, when the post-wave critic reports no accepted `missing_units` or legitimate `reassign_ids` and no `planned` units remain, spend the separately reserved invocation on a distinct final-clean critic. Complete coverage only when that critic also returns no accepted work. If it finds work, queue it and repeat the wave, post-wave critic, and final-clean process. If time or resources force an early stop, mark every untouched unit `deferred`, preserve the critic's reason, and disclose the gap in the report. Never use a silent wave or agent cap as evidence of complete coverage.
 
 The run profile bounds this loop. A `quick` run has exactly one hunter wave followed by exactly one final critic pass. Add each accepted `missing_unit` to the current ledger and mark it `deferred` with reason `quick_profile_final_critic`. For each legitimate evidence-bearing `reassign_id`, archive the live terminal state in `attempts`, increment `wave`, and set the live state to unassigned `deferred` with empty evidence and reason `quick_profile_final_critic`. Do not launch a second hunter wave or another critic. In a scoped run, the critic still reports out-of-scope gaps it notices, but the parent records them as `out_of_scope` with the critic's reason instead of assigning them. The early-stop rule above is the same mechanism: `quick` is a pre-declared early stop, not evidence of complete coverage.
 

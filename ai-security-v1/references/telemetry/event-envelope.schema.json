@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-security-v1:telemetry:event-envelope:1.4.0",
+  "title": "ai-security-v1 telemetry event envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "event_id", "idempotency_key", "run_id", "phase_code",
+    "event_type", "actor_type", "occurred_at", "source_class", "payload_type",
+    "payload", "source_refs"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.4.0" },
+    "event_id": { "$ref": "#/$defs/ulid" },
+    "idempotency_key": { "type": "string", "minLength": 1, "maxLength": 1024, "pattern": "^[^\\u0000-\\u001f\\u007f]+$" },
+    "run_id": { "$ref": "#/$defs/ulid" },
+    "phase_code": { "enum": ["P0", "P1", "P2", "P3", "P4", "P5", "P6", "POST"] },
+    "event_type": { "type": "string", "minLength": 3, "maxLength": 96, "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$" },
+    "actor_type": { "enum": ["parent", "recon", "hunter", "critic", "verifier", "replacement_verifier", "writer", "system", "human"] },
+    "actor_id": { "type": ["string", "null"], "maxLength": 128 },
+    "agent_task_id": { "oneOf": [{ "$ref": "#/$defs/ulid" }, { "type": "null" }] },
+    "correlation_id": { "oneOf": [{ "$ref": "#/$defs/ulid" }, { "type": "null" }] },
+    "causation_id": { "oneOf": [{ "$ref": "#/$defs/ulid" }, { "type": "null" }] },
+    "occurred_at": { "type": "string", "format": "date-time", "maxLength": 40 },
+    "source_class": { "enum": ["S", "O", "P", "D"] },
+    "payload_type": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z0-9][a-z0-9._-]*$" },
+    "payload": { "type": "object" },
+    "source_refs": {
+      "type": "array",
+      "maxItems": 256,
+      "items": { "$ref": "#/$defs/sourceRef" }
+    }
+  },
+  "$defs": {
+    "ulid": { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "sourceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["relative_path"],
+      "properties": {
+        "relative_path": { "type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$" },
+        "start_line": { "type": ["integer", "null"], "minimum": 1 },
+        "end_line": { "type": ["integer", "null"], "minimum": 1 },
+        "content_sha256": { "oneOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }] }
+      }
+    }
+  }
+}

@@ -1,84 +1,86 @@
-# 修改 ai-security-v1 Skill 前置契约
+# ai-security-v1 Skill 修改与运行门禁
 
-## 修改 Skill 前必须冻结
+## 版本边界
 
-以下对象使用同一版本 `1.3.0`：
+- 数据库结构：`1.3.0-core`，远程 `ai_security` 已部署36张核心表；本轮不执行DDL。
+- Telemetry协议：`1.4.0`，覆盖event envelope、配置、Agent `_process`、projection map和Writer接口。
+- 两个版本独立演进。协议变化不自动要求数据库结构迁移，但所有投影字段必须通过对齐检查。
 
-1. 36 表核心 DDL。
-2. event envelope schema。
-3. telemetry config schema。
-4. Agent process extension schema。
-5. projection map。
-6. 项目远程 MySQL 8.0.26 只读解析与正式 DDL 验收结果。
-7. Writer 权限与 TLS 配置。
+## 已满足的结构门禁
 
-任意一项变化都必须提升契约版本并重新运行 `verify-contract.cjs`。Skill 不得猜测数据库列或事件映射。
+1. 36张核心表已在远程MySQL 8.0.26创建并完成核心约束冒烟测试。
+2. 表和utf8mb4文本列使用`utf8mb4_general_ci`；ASCII标识保持`ascii_bin`。
+3. event/config/Agent schema与projection map使用协议`1.4.0`。
+4. `verify-contract.cjs`和`verify-skill-db-alignment.cjs`必须通过。
+5. 原有两个Skill校验器的65项测试必须继续通过。
+6. Skill内嵌的四份运行时schema/projection必须与外部契约逐字节一致。
+7. Writer预检必须匹配36表、527列及固定列指纹；只匹配表数不够。
 
-## Skill 修改时的稳定接口
+## 用户接受、但不是安全通过的偏差
+
+以下项目被用户明确接受为第一版非阻断风险：
+
+- TLS连接不验证服务端身份，配置为`PREFERRED`并记录`tls_identity_not_verified`。
+- 当前账号权限高于最小权限Writer，记录`broad_database_account`；应用Writer仍严格禁止DELETE、DDL、权限语句、存储程序、动态表名和其他数据库。
+- 两个只读视图不创建。
+- `audit_schema_version` seed不补写。
+
+这些状态不得标为PASS或安全合规，只能标为`accepted_risk`或`not_required_v1`。
+
+## Skill稳定接口
 
 ### P0
 
-- 将 `telemetry_mode`、`telemetry_failure_policy`、local/remote status 写入 run metadata。
-- 默认 `local + best_effort`；remote 必须单独授权。
-- 先安全建立本地 Outbox，后启动 Agent。
+- full audit默认`local + best_effort`；remote需要本次明确授权或可审计组织策略。
+- 先建立并验证本地Outbox，再启动Agent。
+- run metadata分开保存审计、local telemetry、remote telemetry和Outbox状态。
 
-### Agent 输出
+### Agent输出
 
-- 原有核心结果保持兼容。
-- 新过程数据放在 `process` 扩展，按 `agent-process-extension.schema.json` 校验。
-- 不记录隐藏思维链，只接受显式 rationale、事实、假设、计划和观察。
-- best-effort 下扩展畸形不破坏有效核心结果；required 模式按预算重试或 incomplete。
+- 原有核心结果保持权威；过程数据放在可选顶层`_process`。
+- `_process`按`agent-process-extension.schema.json`验证，不记录隐藏思维链。
+- best-effort下，畸形sidecar不破坏有效核心结果；required模式按预算重试或incomplete。
+- Hunter使用`hunter_plan`和`hunter_result`两个检查点，验证前评分必须先于针对性验证冻结。
 
-### Parent 事件
+### Parent事件
 
-- 只生成 `projection-map.json` allowlist 中的事件类型。
-- Agent 不得生成 ULID、数据库主键、幂等键或直接写 Outbox。
-- Parent 在验证核心结果和归属后生成事件。
-- shared artifact 先按现有 Skill 原子写入并通过现有校验器，再记录其哈希事件。
+- 只生成projection map允许的事件和表操作。
+- Agent不得生成ULID、数据库主键、幂等键、投影、SQL或直接写Outbox。
+- Authoritative文件先由Parent安全写入并执行原有校验，再记录文件哈希事件。
+- 数据库是旁路副本，不能成为当前审计的证据或裁决输入。
 
-### Candidate 顺序
+### Candidate与验证
 
 ```text
 Hunter observation
-→ candidate.observed（candidate_id 为空）
-→ Parent fingerprint consolidation
+→ candidate.observed（candidate_id为空）
+→ Parent fingerprint/root-cause consolidation
 → candidate.consolidated
-→ observation 关联稳定 candidate
+→ observation关联稳定candidate
 ```
 
-不得预建占位 Candidate 来满足外键。
-
-### Validation
-
-- P3 固化 candidate、hypothesis version 和输入 SHA-256。
-- P5 固化 candidate、finding revision 和输入 SHA-256。
-- Verifier 独立性失败不得产生有效 decision。
-- 重大 replacement 必须创建新 revision 和新独立验证。
-
-### P6 与研究指标
-
-- Skill 只冻结原始事实和人工标签。
-- Brier/ECE 等指标由后置任务计算，不进入审计事务。
-- 首次预测读取 version 1 / score 1；final revision 只用于修订质量分析。
+- P3固化candidate、hypothesis version和输入SHA-256。
+- P5固化candidate、finding revision和输入SHA-256。
+- 独立性失败不得产生有效decision。
+- 重大replacement创建新revision并触发新独立验证。
 
 ## 不变量测试
 
-修改 Skill 后必须证明：
+修改后必须证明：
 
-1. Telemetry off 与 local best-effort 的 `coverage-ledger.json`、`findings.json` 和两个 validator 结果一致。
-2. MySQL、Writer 或远程同步失败不改变当前审计 Verdict。
-3. best-effort Outbox 故障继续 P1–P6；required 才停止启动新 Agent。
-4. Agent 和目标代码看不到数据库凭据、Outbox、其他 Agent 目录或 retained artifacts。
-5. 相同事件重放不产生第二个 hypothesis version、attack execution 或 finding revision。
-6. P5 validation 能反向定位唯一 finding revision。
-7. 数据库只是旁路投影，不能成为当前运行的安全事实源。
+1. telemetry off、local best-effort、remote best-effort不改变`coverage-ledger.json`、`findings.json`或两个校验器语义。
+2. MySQL、Writer或同步失败不改变当前审计Verdict。
+3. best-effort Outbox故障继续P1–P6；required才停止启动新Agent。
+4. Agent和目标代码看不到数据库凭据、Outbox、其他Agent目录或retained artifacts。
+5. 相同事件重放不产生第二个hypothesis version、attack execution或finding revision。
+6. P5 validation可定位唯一finding revision。
+7. 验证前评分在攻击执行前冻结，且不会被最终结果回填。
 
-## 禁止开始 Skill 修改的条件
+## 仍会阻止运行的条件
 
-出现任一情况必须停止：
-
-- 36 表 DDL 尚未在项目远程 MySQL 8.0.26 通过用户批准的正式执行验收。
-- TLS VERIFY_IDENTITY 仍无法建立。
-- 仍计划使用当前广权限账号作为运行时 Writer。
-- JSON Schema 与 projection map 版本不一致。
-- 任何延期表重新进入第一版但没有新的查询/并发证据。
+- 36张核心表、527列或固定列指纹与数据库契约不一致。
+- JSON协议major版本不兼容。
+- 本地Outbox路径不安全、不可写或中间记录损坏，且failure policy为`required`。
+- remote模式缺少有效`remote_mysql`授权。
+- 幂等键相同但envelope hash不同。
+- Writer试图访问allowlist外表、列、数据库或SQL类别。

@@ -61,12 +61,14 @@
   "account_observation": {
     "privilege_class": "all_privileges_on_ai_security_with_grant_option",
     "acceptable_for_migration": "requires_explicit_ddl_authorization",
-    "acceptable_for_runtime_writer": false,
-    "required_runtime_replacement": "dedicated_least_privilege_writer"
+    "least_privilege_compliant": false,
+    "v1_runtime_decision": "accepted_risk_with_application_allowlist",
+    "required_runtime_replacement": "not_required_v1_user_accepted_risk"
   },
-  "blockers_before_remote_writer": [
-    "provide a trusted CA chain and a hostname that passes VERIFY_IDENTITY",
-    "create a dedicated least-privilege runtime Writer account",
-    "obtain separate explicit authorization before any future remote DDL"
-  ]
+  "accepted_risks": [
+    "tls_identity_not_verified",
+    "broad_database_account"
+  ],
+  "blockers_before_remote_writer": [],
+  "future_ddl_gate": "separate explicit authorization required"
 }

@@ -1,14 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:ai-security-v1:agent-process-extension:1.3.0",
+  "$id": "urn:ai-security-v1:agent-process-extension:1.4.0",
   "title": "Value of the optional _process member added to an existing agent result",
   "description": "This schema validates only the _process sidecar. The original Recon/Hunter/Critic/Verifier result remains authoritative and is stored separately. Parent-generated ULIDs are deliberately absent.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "result_type", "agent_id", "explicit_rationale", "evidence_refs", "observations"],
   "properties": {
-    "schema_version": { "const": "1.3.0" },
-    "result_type": { "enum": ["recon", "hunter", "critic", "candidate_validation", "final_review"] },
+    "schema_version": { "const": "1.4.0" },
+    "result_type": { "enum": ["recon", "hunter_plan", "hunter_result", "critic", "candidate_validation", "final_review"] },
     "agent_id": { "$ref": "#/$defs/agentId" },
     "explicit_rationale": { "type": "string", "minLength": 1, "maxLength": 20000 },
     "evidence_refs": { "type": "array", "maxItems": 512, "items": { "$ref": "#/$defs/evidenceRef" } },
@@ -22,7 +22,7 @@
   },
   "allOf": [
     { "if": { "properties": { "result_type": { "const": "recon" } }, "required": ["result_type"] }, "then": { "required": ["recon_facts"] } },
-    { "if": { "properties": { "result_type": { "const": "hunter" } }, "required": ["result_type"] }, "then": { "required": ["hypotheses", "hypothesis_relations", "attack_plans"] } },
+    { "if": { "properties": { "result_type": { "const": "hunter_plan" } }, "required": ["result_type"] }, "then": { "required": ["hypotheses", "hypothesis_relations", "attack_plans"] } },
     { "if": { "properties": { "result_type": { "const": "critic" } }, "required": ["result_type"] }, "then": { "required": ["critic_review"] } },
     { "if": { "properties": { "result_type": { "enum": ["candidate_validation", "final_review"] } }, "required": ["result_type"] }, "then": { "required": ["decision_input"] } }
   ],

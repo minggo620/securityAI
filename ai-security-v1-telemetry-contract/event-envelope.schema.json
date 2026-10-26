@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:ai-security-v1:telemetry:event-envelope:1.3.0",
+  "$id": "urn:ai-security-v1:telemetry:event-envelope:1.4.0",
   "title": "ai-security-v1 telemetry event envelope",
   "type": "object",
   "additionalProperties": false,
@@ -10,7 +10,7 @@
     "payload", "source_refs"
   ],
   "properties": {
-    "schema_version": { "const": "1.3.0" },
+    "schema_version": { "const": "1.4.0" },
     "event_id": { "$ref": "#/$defs/ulid" },
     "idempotency_key": { "type": "string", "minLength": 1, "maxLength": 1024, "pattern": "^[^\\u0000-\\u001f\\u007f]+$" },
     "run_id": { "$ref": "#/$defs/ulid" },

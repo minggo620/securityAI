@@ -2,6 +2,8 @@
 
 Read this file only for explicit database work. Database access is a separate operating mode and is never implied by a request for source review, vulnerability research, or a full audit.
 
+Exception for process telemetry: a full audit may synchronize its already-written local Outbox to the configured `ai_security.audit_*` tables only when that run has explicit `remote_mysql` authorization or an auditable organization policy. Read [TELEMETRY.md](TELEMETRY.md) first. The telemetry Writer is a sidecar and may not read database content back into a current audit verdict.
+
 ## Connection
 
 Use these defaults unless the user explicitly overrides them:
@@ -23,6 +25,14 @@ MYSQL_PWD='Fuckin_2026!' mysql \
 ```
 
 Avoid printing environment variables or process details that could expose credentials. Connect only to the configured instance and database.
+
+## Telemetry Writer boundary
+
+The telemetry protocol is `1.4.0`; the deployed 36-table database schema remains `1.3.0-core`. The user accepted two non-blocking risks for this deployment: TLS server identity is not verified, and the configured account has broader privileges than a least-privilege Writer. Record those facts as `accepted_risk`; do not call them secure or compliant.
+
+Despite the account's database privileges, `scripts/telemetry/mysql-writer.cjs` is restricted to the configured `ai_security` schema, the event/table allowlist, prepared inserts, compare-and-swap updates, idempotency reads, and transaction control. It must never issue `DELETE`, DDL, privilege statements, stored-program statements, dynamic table names, or access another database. Views and an `audit_schema_version` seed are not required by this Skill version.
+
+The trusted Parent supplies `AI_SECURITY_DB_HOST`, `AI_SECURITY_DB_PORT`, `AI_SECURITY_DB_USER`, `AI_SECURITY_DB_NAME`, and the password in `MYSQL_PWD` when invoking `flush-outbox` or a remote-mode event. The Writer has no embedded connection defaults and refuses any database name other than `ai_security`. Agents, target-controlled processes, prompts, Outbox records, payloads, reports, and command arguments must never receive these values. MySQL commit precedes local checkpoint advancement. A failed remote projection leaves the event pending in the Outbox and, under `best_effort`, cannot alter the audit verdict.
 
 ## Workflow
 

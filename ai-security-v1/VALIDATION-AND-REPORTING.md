@@ -6,6 +6,8 @@ After the clean coverage-critic pass or an explicitly recorded early stop, conso
 
 Assign each verifier a canonical lowercase unique ID and `<output-dir>/agents/<verifier-id>/scratch/` plus parent-owned `artifacts/`. The verifier writes only to `scratch/` and never writes retained artifacts. It receives only the candidate, its linked coverage-unit checks and artifact paths, architecture facts needed to interpret the path, exact relevant companion validation blocks, the promotion procedure block below, the source/local execution boundary, the `confirmed`, `needs_validation`, and `rejected` branches of `report-schema.json` copied verbatim, and prior records with the same fingerprint. It must not receive another verifier's conclusion.
 
+With telemetry enabled, the Parent first verifies that the new Verifier differs from the Hunter and every prohibited prior reviewer, freezes the candidate, hypothesis version, prompt input SHA-256, model configuration, and task identity, then records `validation.started` (`DB-P3-01`). A failed independence check records failure telemetry but must not launch the validation or create a decision.
+
 #### Candidate-verifier prompt
 
 ```text
@@ -40,9 +42,29 @@ unavailable or fails, do not use that file as evidence.
 6. Preserve the fingerprint for the same source-derived root cause across every state.
 
 Return exactly one JSON object and no surrounding prose:
-{"decision": "confirmed|needs_validation|rejected", "record": { ... }}
-where record exactly matches the decision's verdict branch of the schema included
-in this prompt. A corrected record replaces the hunter's wording.
+{
+  "decision": "confirmed|needs_validation|rejected",
+  "record": { ... },
+  "_process": {
+    "schema_version": "1.4.0",
+    "result_type": "candidate_validation",
+    "agent_id": "<assigned-verifier-id>",
+    "explicit_rationale": "concise evidence-backed decision rationale",
+    "evidence_refs": [ ... ],
+    "observations": [ ...counterexamples, controls, reproductions, unknowns... ],
+    "decision_input": {
+      "candidate_fingerprint": "...",
+      "hypothesis_version_ref": "...",
+      "finding_revision_ref": null,
+      "input_sha256": "64 lowercase hex",
+      "method_summary": "...",
+      "strongest_control": "... or null"
+    }
+  }
+}
+The record exactly matches the decision's verdict branch of the schema included in
+this prompt. A corrected record replaces the hunter's wording. `_process` contains
+observable claims only and never hidden chain-of-thought.
 ```
 
 Copy this promotion procedure verbatim into every candidate-verifier prompt:
@@ -86,7 +108,7 @@ file separately:
 
 A verifier can promote `needs_validation` to `confirmed` only after independently establishing the complete path and bounded observed result. Demote proposed confirmation to `needs_validation` when a specific deployment or runtime fact remains unknown. Use `rejected` when source, local behavior, a visible control, missing meaningful impact, or an impossible prerequisite refutes the claim. `needs_validation` is never a parking place for a speculative idea.
 
-The parent checks that each verifier returned the same fingerprint unless it identified a genuinely different root cause. Merge corrections, record the decision in every linked coverage unit, and ensure there is one final record per fingerprint. Discard a malformed or prose-wrapped verifier result without repairing it; re-run that candidate with a fresh verifier when the budget permits, otherwise it remains an unvalidated ledger candidate under the incomplete-run rule.
+The parent strips `_process`, validates the core result, and checks that each verifier returned the same fingerprint unless it identified a genuinely different root cause. Validate the sidecar separately. Record counterexamples, strongest controls, reproductions, and unknowns through `validation.observation_recorded` (`DB-P3-02`), then commit the immutable decision, candidate state, coverage state, and event together through `validation.decided` (`DB-P3-03`). Merge corrections and ensure there is one final record per fingerprint. Discard a malformed or prose-wrapped core verifier result without repairing it; re-run that candidate with a fresh verifier when the budget permits. Under `best_effort`, a malformed sidecar does not invalidate a valid core decision, but marks process telemetry discarded/incomplete.
 
 When verifier evidence updates a ledger check, set that check's `agent_id` to the verifier's canonical ID and list its nonempty repository-relative `reviewed_paths`. Keep the unit-level `reviewed_paths` equal to the union across checks. Use `method: "source"` with `artifact: null` for source-only review. Use `method: "local"` only with a file successfully promoted by trusted parent-side code below `agents/<check.agent_id>/artifacts/`. The unit retains its original assignment owner, so independently owned hunter and verifier checks can coexist. For a carried prior record's seeded `planned` unit there is no prior owner: the verifier that re-checks it becomes the unit's assignment owner, and its re-check is the unit's first check, moving the unit to `candidate` with the carried fingerprint.
 
@@ -117,6 +139,8 @@ node <skill-dir>/validate-coverage-ledger.cjs <output-dir>/coverage-ledger.json
 
 Fix every structural and semantic error before continuing. The findings validator rejects input beyond 5 MiB, 1,000 top-level findings, or 64 nesting levels, and caps reported error output at 100 messages. Validator success proves format and ledger consistency only.
 
+When telemetry is enabled, create or append the stable finding and revision with `finding.revision_created` (`DB-P4-01`) only from an independently decided candidate. Preserve all candidate, hypothesis, coverage, evidence, and decision lineage. Record each validator as a real `audit_tool_execution` plus input/output artifact hashes through `validator.completed` (`DB-P4-02`). A failed validator record remains in history; fix the authoritative file and record a new execution rather than overwriting it.
+
 ### Phase 5: Verify the final records with fresh eyes
 
 Launch one fresh `research` verifier per final `confirmed` and `needs_validation` record, in parallel. This verifier checks the structured record, not the hunter write-up, and remains inside source/local boundaries.
@@ -140,17 +164,19 @@ For `needs_validation`, require it to check:
 4. At least one validation-plan field is present and exact. `local` uses a bounded fixture; `deployment` asks an owner to observe a configuration, identity, route, policy, or runtime fact. Do not invent a plan for an inapplicable context, and never send audit traffic to a deployment.
 5. The fingerprint matches prior/current records for the same root cause.
 
-Each verifier returns exactly one JSON object: `{"decision":"verified","fingerprint":"..."}` or `{"decision":"replace","reason":"...","record":{...}}`, with no surrounding prose. A replacement record must match its `confirmed`, `needs_validation`, or `rejected` schema branch. Treat a malformed or prose-wrapped Phase 5 result the same way as in Phase 3: discard it without repairing it and re-run with a fresh verifier when the budget permits.
+Each verifier returns exactly one JSON object: `{"decision":"verified","fingerprint":"...","_process":{...}}` or `{"decision":"replace","reason":"...","record":{...},"_process":{...}}`, with no surrounding prose. The Phase 5 sidecar uses `result_type: "final_review"`, freezes the candidate and exact input finding revision plus input SHA-256 in `decision_input`, and records observable control/counterexample evidence. A replacement record must match its `confirmed`, `needs_validation`, or `rejected` schema branch. Treat a malformed or prose-wrapped core Phase 5 result the same way as in Phase 3; under `best_effort`, sidecar failure alone does not change a valid core result.
 
 Do not apply a Phase 5 replacement as final when it promotes a record to a stronger verdict, including any promotion to `confirmed`, or materially changes the root cause, trace, execution input or observed result, demonstrated impact, or severity. Give that complete replacement to a new independent verifier that did not hunt, perform Phase 3 validation, or propose the Phase 5 replacement. The new verifier rechecks the current source and independently reproduces any decisive local result under the execution boundary, then returns `verified` or another replacement. Apply a material replacement only after this fresh verification. If another material replacement results, repeat with a fresh verifier. If budget or independence is unavailable, remove the disputed record from `findings.json`, keep its ledger unit as an unresolved candidate, and set `run_status: "incomplete"` with an exact `incomplete_reason`. Non-material wording or repository-line corrections may be applied directly when they do not change meaning or evidence.
 
-After every applied replacement, rerun both validators and update linked ledger decisions. If a final verifier identifies a separate root cause, assign a new fingerprint and send it through independent candidate validation before inclusion. Set `run_status: "complete"` only when every ledger candidate has an independent final disposition and every retained record passes Phase 5.
+Record each final review through `validation.started`, `validation.observation_recorded`, and `validation.decided` (`DB-P5-01`). Every applied replacement creates a new append-only finding revision and event (`DB-P5-02`), then reruns both validators and updates linked ledger decisions. If a final verifier identifies a separate root cause, assign a new fingerprint and send it through independent candidate validation before inclusion. Set `run_status: "complete"` only when every ledger candidate has an independent final disposition and every retained record passes Phase 5.
 
 Do not verify only `confirmed` records. A misleading `needs_validation` handoff wastes owner time and can preserve a false premise.
 
 ### Phase 6: Produce target-neutral reports from final records
 
 Only after Phase 5 passes for every record retained in `findings.json`, derive prose from the final records, the ledger, and the hunter `hardening` notes retained in ledger bookkeeping. An incomplete run may report independently verified records, but it must identify each unresolved ledger candidate and must not present it as a finding. The prose files never change a verdict, severity, blocker, or demonstrated impact.
+
+When telemetry is enabled, snapshot the three reports and all authoritative core artifacts by relative path, version, size, and SHA-256 (`DB-P6-01`). Emit `research.input_frozen` only to mark the immutable analysis boundary; do not compute Brier/ECE or other post-run metrics inside the audit (`DB-P6-02`). Call `finalize-run` after the reports are written, recording audit, local telemetry, remote telemetry, and Outbox status separately (`DB-P6-03`). A complete audit may have `telemetry_remote_status=pending_sync`, but `REPORT.md` must disclose it.
 
 #### `REPORT.md`
 
