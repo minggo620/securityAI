@@ -4,7 +4,7 @@
 
 - 目标远程数据库已只读确认是 MySQL 8.0.26。
 - `ai_security` 已有 36 张 `audit_*` 核心表，表和 utf8mb4 文本列均为 `utf8mb4_general_ci`。
-- 当前配置账号权限过高，不能作为运行时 Writer。
+- 当前配置账号权限过高，不能作为无边界运行账号；database-client 仍必须执行应用层 allowlist。
 - 远程连接虽协商 TLS 1.3，但 `VERIFY_IDENTITY` 尚因可信 CA 缺失而失败。
 - 远程 8.0.26 已通过只读 `PREPARE/DEALLOCATE` 解析 36 个 `CREATE TABLE` 和 4 个 `ALTER TABLE`；核心表 DDL 和排序规则迁移已执行。视图、seed 和约束行为仍未全部验证。
 - 本文件不授权任何后续 DDL；补齐视图或 seed 需要用户针对目标、版本和操作再次明确授权。
@@ -38,7 +38,7 @@ collation_database            utf8mb4_general_ci
 
 执行规则：
 
-1. 使用获批的迁移账号；运行时 Writer 仍必须是独立最小权限账号。
+1. 使用获批的迁移账号；运行时 Parent database-client 仍必须受应用层 allowlist 限制。
 2. 使用受保护 defaults file；命令行、日志和文档不得出现密码。
 3. 客户端强制 `VERIFY_IDENTITY`，提供可信 CA 和与证书匹配的主机名。
 4. 不使用 `--force`，不关闭 `foreign_key_checks`。
@@ -80,7 +80,7 @@ FROM audit_schema_version;
 
 ## C. 最小行为测试
 
-2026-10-26 已在远程 `ai_security` 使用 `synthetic-db-acceptance` 完成核心冒烟验收：正向 run→Agent→hypothesis→score→attack→validation→finding 链路、非法 CHECK、缺失外键、重复幂等键、P3/P5 输入约束、人工标签约束、多对多假设关系和 `ON DELETE RESTRICT` 均符合预期。所有测试在事务中执行或因预期失败自动回滚，合成数据残留为 0。完整故障矩阵和最小权限 Writer 重放仍待后续验收。
+2026-10-26 已在远程 `ai_security` 使用 `synthetic-db-acceptance` 完成核心冒烟验收：正向 run→Agent→hypothesis→score→attack→validation→finding 链路、非法 CHECK、缺失外键、重复幂等键、P3/P5 输入约束、人工标签约束、多对多假设关系和 `ON DELETE RESTRICT` 均符合预期。所有测试在事务中执行或因预期失败自动回滚，合成数据残留为 0。完整故障矩阵和 database-client 重放仍待后续验收。
 
 在项目远程数据库完成建表后，使用不含真实源码、凭据或审计结果的合成数据进行最小行为测试：
 
@@ -110,9 +110,9 @@ FROM audit_schema_version;
 
 ## E. 账号分离
 
-当前配置账号只用于获批迁移或只读检查，不用于 Skill Writer。正式 Writer 使用独立账号：
+当前配置账号只用于获批迁移、只读检查或受 allowlist 约束的 Skill database-client：
 
-| 表类型 | Writer 权限 |
+| 表类型 | database-client 权限 |
 | --- | --- |
 | `audit_schema_version` | `SELECT` |
 | append-only event/version/relation/observation/revision 表 | `SELECT, INSERT` |
@@ -121,4 +121,4 @@ FROM audit_schema_version;
 | 所有 `audit_*` | 禁止 `DELETE, ALTER, DROP, INDEX, REFERENCES, TRIGGER` |
 | 数据库/全局 | 禁止 `GRANT, CREATE USER, FILE, PROCESS, SUPER` 及其他数据库访问 |
 
-Writer defaults file 权限必须为 `0600`，不得是符号链接；必须包含 CA、匹配证书的主机名和 `ssl-mode=VERIFY_IDENTITY`。
+database-client defaults file 权限必须为 `0600`，不得是符号链接；必须包含 CA、匹配证书的主机名和 `ssl-mode=VERIFY_IDENTITY`。

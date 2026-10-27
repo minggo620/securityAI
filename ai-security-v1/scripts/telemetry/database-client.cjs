@@ -30,8 +30,8 @@ function connection() {
     database: process.env.AI_SECURITY_DB_NAME || documented.database,
     password: process.env.MYSQL_PWD || documented.password
   };
-  if (!value.host || !value.user || !value.database || !value.password) throw new Error('AUTH_REQUIRED: trusted Writer connection configuration is incomplete');
-  if (value.database !== 'ai_security') throw new Error('SCHEMA_INCOMPATIBLE: Writer may connect only to ai_security');
+  if (!value.host || !value.user || !value.database || !value.password) throw new Error('AUTH_REQUIRED: database connection configuration is incomplete');
+  if (value.database !== 'ai_security') throw new Error('SCHEMA_INCOMPATIBLE: database client may connect only to ai_security');
   if (!/^\d{1,5}$/.test(String(value.port)) || Number(value.port) < 1 || Number(value.port) > 65535) throw new Error('AUTH_REQUIRED: invalid database port');
   return value;
 }
@@ -72,7 +72,7 @@ function quoteStrict(value, pattern, name) {
 
 function preflight(options = {}) {
   const database = runMysql('SELECT DATABASE(); SELECT VERSION(); SHOW STATUS LIKE \'Ssl_cipher\';', options).trim().split('\n');
-  if (database[0] !== 'ai_security') throw new Error('SCHEMA_INCOMPATIBLE: Writer is not connected to ai_security');
+  if (database[0] !== 'ai_security') throw new Error('SCHEMA_INCOMPATIBLE: database client is not connected to ai_security');
   if (!(database[1] || '').startsWith(contractManifest.mysql_server_version)) throw new Error(`SCHEMA_INCOMPATIBLE: expected MySQL ${contractManifest.mysql_server_version}`);
   const rows = runMysql("SELECT TABLE_NAME,COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME LIKE 'audit\\_%' ESCAPE '\\\\' ORDER BY TABLE_NAME,ORDINAL_POSITION;", options).trim().split('\n').filter(Boolean);
   const columns = new Map();
@@ -99,7 +99,7 @@ function existingEnvelope(record, options = {}) {
   return output || null;
 }
 
-function projectRecord(record, cachedPreflight, options = {}) {
+function applyEvent(record, cachedPreflight, options = {}) {
   const existing = existingEnvelope(record, options);
   if (existing) {
     if (existing === record.envelope_sha256) return { status: 'already_applied', event_id: record.envelope.event_id };
@@ -118,4 +118,4 @@ function projectRecord(record, cachedPreflight, options = {}) {
   return { status: 'projected', event_id: record.envelope.event_id, ssl_cipher: state.ssl_cipher };
 }
 
-module.exports = { classifiedError, connection, mysqlArgs, preflight, projectRecord, runMysql };
+module.exports = { applyEvent, classifiedError, connection, mysqlArgs, preflight, runMysql };

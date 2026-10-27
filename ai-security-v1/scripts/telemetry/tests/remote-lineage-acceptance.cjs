@@ -9,7 +9,7 @@ const { ulid } = require('../ulid.cjs');
 const { defaultConfig, loadConfig } = require('../config.cjs');
 const { buildEvent, sha256 } = require('../event-builder.cjs');
 const outbox = require('../outbox.cjs');
-const writer = require('../mysql-writer.cjs');
+const database = require('../database-client.cjs');
 const { operationsFor, validateEventAgainstHistory } = require('../projection.cjs');
 
 if (process.env.AI_SECURITY_ACCEPTANCE !== '1') throw new Error('set AI_SECURITY_ACCEPTANCE=1 for the explicitly authorized remote synthetic test');
@@ -32,8 +32,8 @@ const config = loadConfig(path.join(outputDir, 'telemetry/config.json'));
 if (config.mode !== 'remote' || !config.consent.remote_mysql) throw new Error('remote consent required');
 const initial = outbox.readLines(path.join(outputDir, config.outbox_relative_path)).records[0];
 const runId = initial.envelope.run_id;
-const writerOptions = { tlsMode: config.remote_sync.tls_mode };
-const state = writer.preflight(writerOptions);
+const databaseOptions = { tlsMode: config.remote_sync.tls_mode };
+const state = database.preflight(databaseOptions);
 let checkpoint = outbox.readCheckpoint(outputDir);
 
 function mysqlDate() { return new Date().toISOString().replace('T', ' ').replace('Z', ''); }
@@ -44,7 +44,7 @@ function record(input) {
   operationsFor(built.event);
   validateEventAgainstHistory(built.event, outbox.readLines(path.join(outputDir, config.outbox_relative_path), true).records);
   const appended = outbox.append(outputDir, config.outbox_relative_path, built);
-  const result = writer.projectRecord(appended.record, state, writerOptions);
+  const result = database.applyEvent(appended.record, state, databaseOptions);
   checkpoint = { sequence: appended.record.sequence, record_sha256: appended.record.record_sha256, event_id: built.event.event_id, committed_at: new Date().toISOString() };
   outbox.writeCheckpoint(outputDir, checkpoint);
   return { event_id: built.event.event_id, payload_id: built.event.payload.content._telemetry.payload_id, result };
@@ -203,22 +203,22 @@ record({ run_id: runId, phase_code: 'P2', event_type: 'phase.completed', actor_t
 record({ run_id: runId, phase_code: 'P3', event_type: 'phase.completed', actor_type: 'parent', idempotency_key: `run/${runId}/P3/complete`, payload_type: 'phase.completed', payload: { _telemetry: { phase_execution_id: p3 }, projections: [{ table: 'audit_phase_execution', action: 'update', values: { status: 'completed', output_payload_id: '$payload_id', ended_at: mysqlDate() }, where: { phase_execution_id: p3 } }] }, source_refs: [] });
 
 record({ run_id: runId, phase_code: 'POST', event_type: 'research.input_frozen', actor_type: 'parent', idempotency_key: `run/${runId}/POST/research/frozen`, payload_type: 'research.input', payload: { _telemetry: { phase_execution_id: null }, frozen_at: new Date().toISOString(), projections: [] }, source_refs: [] });
-record({ run_id: runId, phase_code: 'P6', event_type: 'sync.status_changed', actor_type: 'writer', idempotency_key: `run/${runId}/P6/sync/synced`, payload_type: 'sync.status', payload: { _telemetry: { phase_execution_id: null }, projections: [{ table: 'audit_run', action: 'update', values: { telemetry_remote_status: 'synced', outbox_status: 'empty', row_version: 2 }, where: { run_id: runId, row_version: 1 } }] }, source_refs: [] });
+record({ run_id: runId, phase_code: 'P6', event_type: 'sync.status_changed', actor_type: 'parent', idempotency_key: `run/${runId}/P6/sync/synced`, payload_type: 'sync.status', payload: { _telemetry: { phase_execution_id: null }, projections: [{ table: 'audit_run', action: 'update', values: { telemetry_remote_status: 'synced', outbox_status: 'empty', row_version: 2 }, where: { run_id: runId, row_version: 1 } }] }, source_refs: [] });
 
 const finalized = record({ run_id: runId, phase_code: 'P6', event_type: 'run.finalized', actor_type: 'parent', idempotency_key: `run/${runId}/P6/final/complete`, payload_type: 'run.finalized', payload: { _telemetry: { phase_execution_id: null }, projections: [{ table: 'audit_run', action: 'update', values: { run_status: 'complete', telemetry_local_status: 'healthy', telemetry_remote_status: 'synced', outbox_status: 'empty', incomplete_reason: null, telemetry_incomplete_reason: null, ended_at: mysqlDate(), row_version: 3 }, where: { run_id: runId, row_version: 2 } }] }, source_refs: [] });
 
-const replay = writer.projectRecord(initial, state, writerOptions);
+const replay = database.applyEvent(initial, state, databaseOptions);
 if (replay.status !== 'already_applied') throw new Error(`idempotency replay failed: ${replay.status}`);
 const escapedRun = `'${runId}'`;
 const summaryQuery = `SELECT r.run_status,r.telemetry_remote_status,r.outbox_status,COUNT(DISTINCT t.task_id),COUNT(DISTINCT h.hypothesis_id),COUNT(DISTINCT s.hypothesis_score_id),COUNT(DISTINCT ap.attack_plan_id),COUNT(DISTINCT ae.attack_execution_id),COUNT(DISTINCT c.candidate_id),COUNT(DISTINCT v.validation_id),COUNT(DISTINCT d.decision_id),COUNT(DISTINCT f.finding_id),COUNT(DISTINCT fr.finding_revision_id),COUNT(DISTINCT ha.adjudication_id) FROM audit_run r LEFT JOIN audit_agent_task t ON t.run_id=r.run_id LEFT JOIN audit_hypothesis h ON h.run_id=r.run_id LEFT JOIN audit_hypothesis_version hv ON hv.hypothesis_id=h.hypothesis_id LEFT JOIN audit_hypothesis_score s ON s.hypothesis_version_id=hv.hypothesis_version_id LEFT JOIN audit_attack_plan ap ON ap.hypothesis_version_id=hv.hypothesis_version_id LEFT JOIN audit_attack_step ast ON ast.attack_plan_id=ap.attack_plan_id LEFT JOIN audit_attack_execution ae ON ae.attack_step_id=ast.attack_step_id LEFT JOIN audit_candidate c ON c.run_id=r.run_id LEFT JOIN audit_validation v ON v.candidate_id=c.candidate_id LEFT JOIN audit_decision d ON d.validation_id=v.validation_id LEFT JOIN audit_finding f ON f.run_id=r.run_id LEFT JOIN audit_finding_revision fr ON fr.finding_id=f.finding_id LEFT JOIN audit_human_adjudication ha ON ha.run_id=r.run_id WHERE r.run_id=${escapedRun} GROUP BY r.run_id;`;
-const summaryResult = cp.spawnSync('mysql', writer.mysqlArgs(writerOptions), { input: summaryQuery, encoding: 'utf8', env: process.env, maxBuffer: 1024 * 1024 });
+const summaryResult = cp.spawnSync('mysql', database.mysqlArgs(databaseOptions), { input: summaryQuery, encoding: 'utf8', env: process.env, maxBuffer: 1024 * 1024 });
 if (summaryResult.status !== 0) throw new Error('remote acceptance summary query failed');
 const summary = summaryResult.stdout.trim().split('\t');
 if (summary.length !== 14 || summary.slice(0, 3).join('/') !== 'complete/synced/empty' || summary.slice(3).some((value) => Number(value) < 1)) throw new Error(`remote lineage verification failed: ${summary.join('/')}`);
 
 const expectedEventTypes = JSON.parse(fs.readFileSync(path.join(__dirname, '../../../references/telemetry/projection-map.json'), 'utf8')).events.map((entry) => entry.event_type).sort();
 const eventMatrixSql = `SELECT DISTINCT event_type FROM audit_event WHERE run_id=${escapedRun} ORDER BY event_type;`;
-const eventMatrixResult = cp.spawnSync('mysql', writer.mysqlArgs(writerOptions), { input: eventMatrixSql, encoding: 'utf8', env: process.env, maxBuffer: 1024 * 1024, timeout: 30000 });
+const eventMatrixResult = cp.spawnSync('mysql', database.mysqlArgs(databaseOptions), { input: eventMatrixSql, encoding: 'utf8', env: process.env, maxBuffer: 1024 * 1024, timeout: 30000 });
 if (eventMatrixResult.status !== 0) throw new Error('remote event matrix query failed');
 const actualEventTypes = eventMatrixResult.stdout.trim().split('\n').filter(Boolean);
 const missingEventTypes = expectedEventTypes.filter((value) => !actualEventTypes.includes(value));

@@ -9,7 +9,7 @@ Read this file in full audit mode before Phase 0. Telemetry is a sidecar: the ca
 - The protocol may evolve without changing the table structure. Runtime schemas and the event allowlist are in `references/telemetry/`.
 - Views and an `audit_schema_version` seed are not required for this version.
 
-The configured account has broader privileges than a least-privilege Writer and TLS server identity is not verified. The user accepted both as explicit non-blocking risks. Do not represent them as secure defaults: record `broad_database_account` and `tls_identity_not_verified` in the P0 configuration payload. The Writer's application allowlist remains mandatory.
+The configured account has broader privileges than a least-privilege runtime account and TLS server identity is not verified. The user accepted both as explicit non-blocking risks. Do not represent them as secure defaults: record `broad_database_account` and `tls_identity_not_verified` in the P0 configuration payload. The database client's application allowlist remains mandatory.
 
 ## Modes
 
@@ -109,7 +109,7 @@ Retain the returned `run_id` and `phase_execution_id` in `run-metadata.json`. If
 }
 ```
 
-Projection operations are an internal Parent-to-Writer contract. Each event may touch only the tables listed for its event type in `projection-map.json`, and every table in that event's `required_tables` must be present. The runtime rejects a valid-looking event with zero business rows. It also enforces the declared phase and causal predecessor before Outbox append. Values may use `$run_id`, `$event_id`, `$payload_id`, and `$agent_task_id`; the trusted Writer resolves them. Binary values use `{"$hex":"..."}` and JSON values use `{"$json":{...}}`. Updates require a nonempty `where`; tables with `row_version` require compare-and-swap values in both `values` and `where`.
+Projection operations are an internal Parent-to-database-client contract. Each event may touch only the tables listed for its event type in `projection-map.json`, and every table in that event's `required_tables` must be present. The runtime rejects a valid-looking event with zero business rows. It also enforces the declared phase and causal predecessor before Outbox append. Values may use `$run_id`, `$event_id`, `$payload_id`, and `$agent_task_id`; the trusted database client resolves them. Binary values use `{"$hex":"..."}` and JSON values use `{"$json":{...}}`. Updates require a nonempty `where`; tables with `row_version` require compare-and-swap values in both `values` and `where`.
 
 Do not let an Agent construct `projections`, ULIDs, idempotency keys, SQL, or database column names. For Agent returns, the Parent supplies only trusted context mappings (phase/task IDs, accepted fact IDs, coverage/entity IDs and row versions); the adapter translates the valid core result and valid `_process` sidecar. Adapter-owned IDs are deterministically derived from run, task, request idempotency key, and a typed logical entity key, so a partial retry recreates the same IDs and causal links. The CLI response's `entities` map is the only generated ID map that may be carried into the next checkpoint.
 
@@ -130,7 +130,7 @@ Call `record-snapshot` only after the Parent has written the authoritative file 
 
 ### Flush and finalize
 
-`flush-outbox` is performed automatically at phase boundaries and before finalization in remote mode. The trusted Parent passes `AI_SECURITY_DB_HOST`, `AI_SECURITY_DB_PORT`, `AI_SECURITY_DB_USER`, and `AI_SECURITY_DB_NAME`; it supplies the password only in `MYSQL_PWD`. Never put any of them in arguments or retained files. The Writer rejects a database name other than `ai_security`. A checkpoint advances only after a MySQL commit and must match the exact Outbox chain record before replay resumes. A run with a healthy Outbox but unavailable MySQL remains auditable and is finalized as `pending_sync` until a later flush succeeds.
+In remote mode, each record point first appends to the Outbox and then immediately calls the trusted database client. `flush-outbox` remains available for phase-boundary recovery and replays pending events in checkpoint order. The trusted Parent passes `AI_SECURITY_DB_HOST`, `AI_SECURITY_DB_PORT`, `AI_SECURITY_DB_USER`, and `AI_SECURITY_DB_NAME`; it supplies the password only in `MYSQL_PWD`. Never put any of them in arguments or retained files. The database client rejects a database name other than `ai_security`. A checkpoint advances only after a MySQL commit and must match the exact Outbox chain record before replay resumes. A run with a healthy Outbox but unavailable MySQL remains auditable and is finalized as `pending_sync` until a later flush succeeds.
 
 `finalize-run` records run and telemetry statuses separately. `run_status=complete` may coexist with `telemetry_remote_status=pending_sync`; disclose that state in `REPORT.md`.
 
@@ -195,8 +195,8 @@ The execution checkpoint distinguishes `source_only`, `local`, and `not_executed
 - Payloads are redacted before Outbox append. Passwords, credentials, authorization state, complete environments, private keys, connection strings, absolute host paths, and hidden reasoning are forbidden.
 - The per-payload limit is 5 MiB. Oversized data stores bounded metadata/summary, original length, and truncation state while preserving the small trusted `_telemetry` and `projections` control section. If that control section itself exceeds the limit, redaction blocks the payload rather than silently dropping database work.
 - Redaction failure stores metadata only with `redaction_status=blocked`.
-- Remote Writer SQL is restricted to the 36-table/event allowlist, prepared statements, inserts, compare-and-swap updates, and transaction control. No delete, DDL, privilege statement, dynamic table name, stored program, or other database is allowed. Connections use a bounded connect/operation timeout; preflight pins MySQL version, table/column hash, foreign-key count, check-constraint count and `utf8mb4_general_ci`/`utf8mb4` counts.
-- MySQL/Writer/Outbox failures are telemetry facts, never target vulnerabilities.
+- Runtime database SQL is restricted to the 36-table/event allowlist, prepared statements, inserts, compare-and-swap updates, and transaction control. No delete, DDL, privilege statement, dynamic table name, stored program, or other database is allowed. Connections use a bounded connect/operation timeout; preflight pins MySQL version, table/column hash, foreign-key count, check-constraint count and `utf8mb4_general_ci`/`utf8mb4` counts.
+- MySQL/database-client/Outbox failures are telemetry facts, never target vulnerabilities.
 
 ## Completion checks
 

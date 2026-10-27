@@ -1,12 +1,12 @@
 # ai-security-v1 Skill 可观测化与数据库采集实施方案
 
 > 文档状态：第一版核心实现完成（2026-10-27）
-> 当前操作边界：Skill 契约、Telemetry 1.4.0、Outbox、Writer、P0–P6 记录点和测试已实现；本轮未执行 DDL，既有 36 张表保持不变。
+> 当前操作边界：Skill 契约、Telemetry 1.4.0、Outbox、database-client、P0–P6 记录点和测试已实现；本轮未执行 DDL，既有 36 张表保持不变。
 > 设计基线：`ai-security-v1` 当前版本及三份已完成的数据库与流程设计文档。
 
 > 架构复核修订：第一版数据库由原 49 表概念模型收敛为 36 张核心事务表。移除数据库租约、通用字段 provenance、远程逐事件 checkpoint/ingest failure、surface/boundary、coverage block、Critic、validator、report 和 metric 专表；这些能力分别由本地 telemetry、事件 JSON、architecture/coverage payload、Agent/tool/artifact 和后置研究任务承担。数据库结构冻结为 `1.3.0-core`，过程协议独立演进为 `1.4.0`。
 
-> 前置契约包：[`ai-security-v1-telemetry-contract/`](./ai-security-v1-telemetry-contract/README.md)。远程 MySQL 8.0.26 的 TLS 身份未验证和广权限账号已按用户决定记录为第一版 `accepted_risk`，不再阻断获授权的远程 Writer；应用层 SQL/表/列 allowlist、明确 `remote_mysql` 授权和本地 Outbox 仍是硬门禁。任何未来 DDL 仍需单独批准。
+> 前置契约包：[`ai-security-v1-telemetry-contract/`](./ai-security-v1-telemetry-contract/README.md)。远程 MySQL 8.0.26 的 TLS 身份未验证和广权限账号已按用户决定记录为第一版 `accepted_risk`，不再阻断获授权的 Parent 记录点直写；应用层 SQL/表/列 allowlist、明确 `remote_mysql` 授权和本地 Outbox 仍是硬门禁。任何未来 DDL 仍需单独批准。
 
 ## 1. 目标与不可破坏的执行原则
 
@@ -24,7 +24,7 @@
 2. 现有两个校验器仍是覆盖和 Finding 合法性的强制门禁。
 3. Telemetry 和 MySQL 只是旁路记录系统，不参与当前运行的漏洞裁决。
 4. Recon、Hunter、Critic、Verifier 不得直接连接数据库或写 Outbox。
-5. 只有可信 Parent 可以写本地 Outbox，只有可信 Writer 可以同步 MySQL。
+5. 只有可信 Parent 可以写本地 Outbox，并在记录点调用 database-client 同步 MySQL。
 6. 数据库断线绝不阻塞 P1–P6。
 7. 默认 `best_effort` 模式下，本地 Outbox 失败也不阻塞审计，只标记过程记录不完整。
 8. 只有用户显式选择 `required` 严格模式时，本地 Outbox 不可安全写入才停止启动新 Agent。
@@ -46,7 +46,7 @@ Recon / Hunter / Critic / Verifier
 主流程真相源   旁路事件日志   隔离临时数据
      │          │
      │          ▼
-现有校验器   Trusted Writer
+现有校验器   Trusted Parent database-client
      │          │
      ▼          ▼
 P1–P6继续   ai_security.audit_*
@@ -214,9 +214,9 @@ uncovered
 
 修改 `DATABASE.md`：
 
-- 将“人工数据库操作模式”和“审计 Telemetry Writer”明确分开。
+- 将“人工数据库操作模式”和“审计 Telemetry database-client”明确分开。
 - 第一版按用户决定复用已限制到 `ai_security` 的现有账号，并如实记录 `broad_database_account`，不把它标记为最小权限或安全通过。
-- Writer 在应用层只接受固定数据库、32 类事件、36 表、固定列指纹、INSERT、CAS UPDATE、幂等 SELECT 和事务控制。
+- database-client 在应用层只接受固定数据库、32 类事件、36 表、固定列指纹、INSERT、CAS UPDATE、幂等 SELECT 和事务控制。
 - 连接参数只由可信 Parent 环境提供，密码只经 `MYSQL_PWD` 注入。
 - 密码不得进入命令行参数、事件、日志、Outbox 或报告。
 - DDL、账号和授权创建只能在单独批准的迁移操作中执行。
@@ -426,7 +426,7 @@ Telemetry 失败不得回滚已经合法写入的审计文件。
 - 记录报告元数据和哈希。
 - 计算覆盖、假设、成本和校准指标。
 - 分别结束 `run_status`、`telemetry_local_status` 和 `telemetry_remote_status`。
-- Remote Writer 异步 flush。
+- Parent 在记录点直写，Outbox 仅用于失败后的同步重放。
 - 若仍有待同步记录，报告披露 `pending_sync`，但审计可正常完成。
 
 ## 8. 兼容与降级规则
@@ -474,7 +474,7 @@ payload
 | 幂等键冲突 | 立即停止该事件，不覆盖 |
 | 重复且内容一致 | 返回既有结果 |
 
-第一版使用单 Parent/单 Writer、本地排他锁和原子 checkpoint，不建设数据库 lease/fencing。可变投影继续使用 `row_version` CAS；只有出现多 Writer 高可用需求后才扩展租约。
+第一版使用单 Parent、本地排他锁和原子 checkpoint，不建设数据库 lease/fencing。可变投影继续使用 `row_version` CAS；只有出现多 Parent 高可用需求后才扩展租约。
 
 ## 10. 实施顺序与质量门禁
 
@@ -510,10 +510,10 @@ payload
 
 通过条件：扩展完整性达到要求，且没有新增审计流程中断。
 
-### 阶段 E：数据库 Writer（已完成核心实现）
+### 阶段 E：Parent 数据库客户端（已完成核心实现）
 
 - 未执行 DDL；直接只读预检既有远程 36 表、527 列及固定 SHA-256 指纹。
-- Writer 不导出原始 SQL 接口，只能通过事件 projection map 产生 INSERT、CAS UPDATE 和事务语句。
+- database-client 不导出原始 SQL 接口，只能通过事件 projection map 产生 INSERT、CAS UPDATE 和事务语句。
 - 已验证真实远程投影、完整血缘、人工标签分离、幂等重放、TLS cipher 存在和最终 run 状态。
 
 通过条件：应用代码不能产生 DELETE、DDL、GRANT、动态表名或其他数据库访问；账号本身权限较大属于已接受风险。
@@ -523,7 +523,7 @@ payload
 - 必须获得单独授权。
 - 使用明确合成 repo/run 标识和本次用户授权执行 canary 同步。
 - 对比 Outbox 事件、checkpoint、数据库投影和项目→模型→假设→攻击→验证→Finding 血缘。
-- 测试数据不由运行时 Writer 删除；保留供用户后续按合成标识清理。
+- 测试数据不由运行时 database-client 删除；保留供用户后续按合成标识清理。
 
 回滚方式：关闭 remote sync，保留本地 Outbox；审计主流程不需要回滚。
 
@@ -548,7 +548,7 @@ payload
 15. Payload 超过 5 MiB。
 16. Outbox 尾部半写入恢复。
 17. Outbox 中间哈希链损坏。
-18. 并发 Parent、本地排他锁和失效 Writer instance。
+18. 并发 Parent、本地排他锁和失效 database-client instance。
 19. 审计完成但 telemetry pending_sync。
 20. 内部裁决与人工 adjudication 不一致。
 21. SQL 注入字符只能作为数据存储。
@@ -568,7 +568,7 @@ payload
 
 - 原有 65 项测试全部通过。
 - 官方 `quick_validate.py` 在具备 PyYAML 的受控执行环境通过。
-- 新增 Telemetry、Outbox、脱敏、Agent Schema 和 Writer 测试全部通过。
+- 新增 Telemetry、Outbox、脱敏、Agent Schema 和 database-client 测试全部通过。
 - 两个原有校验器的外部行为没有变化。
 - `report-schema.json` 的 Verdict 契约没有被 Telemetry 污染。
 - Telemetry 关闭时可以完整执行原 P1–P6。
@@ -588,7 +588,7 @@ payload
 - required 模式只能显式启用。
 - 不新增 npm 运行时依赖。
 - 不自动执行 DDL。
-- 第一版允许复用 `DATABASE.md` 的现有连接，但必须记录广权限 accepted risk，并由 Writer 应用层边界限制。
+- 第一版允许复用 `DATABASE.md` 的现有连接，但必须记录广权限 accepted risk，并由 database-client 应用层边界限制。
 - 不修改现有 Finding Verdict Schema。
 - 不记录隐藏思维链。
 - 三份设计文档已统一为 `best_effort|required` 双模式语义，并与实现版本对齐。

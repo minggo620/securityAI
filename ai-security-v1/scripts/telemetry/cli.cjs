@@ -11,13 +11,17 @@ const { buildEvent, sha256 } = require('./event-builder.cjs');
 const outbox = require('./outbox.cjs');
 const { operationsFor, validateEventAgainstHistory } = require('./projection.cjs');
 const { adaptAgentResult } = require('./agent-adapter.cjs');
-const writer = require('./mysql-writer.cjs');
+const database = require('./database-client.cjs');
 
 function response(value) { process.stdout.write(`${JSON.stringify(value)}\n`); }
+function authorizationRequired(code) {
+  return code === 'DB_UNAVAILABLE' && /^(1|true|yes)$/i.test(String(process.env.CODEX_SANDBOX_NETWORK_DISABLED || ''));
+}
 function fail(error) {
   const message = error instanceof Error ? error.message : String(error);
   const code = message.match(/^([A-Z_]+):/)?.[1] || 'TELEMETRY_ERROR';
-  response({ ok: false, event_id: null, status: 'failed', error: { code, retryable: code === 'DB_UNAVAILABLE' } });
+  const needsAuthorization = authorizationRequired(code);
+  response({ ok: false, event_id: null, status: 'failed', error: { code, retryable: code === 'DB_UNAVAILABLE', authorization_required: needsAuthorization, next_action: needsAuthorization ? 'retry_with_network_authorization' : null } });
   process.exitCode = 1;
 }
 
@@ -95,18 +99,19 @@ function appendBuilt(outputDir, config, built) {
   try {
     const records = outbox.readLines(outboxFile, true).records;
     const checkpoint = outbox.validateCheckpoint(records, outbox.readCheckpoint(outputDir));
-    const state = writer.preflight({ tlsMode: config.remote_sync.tls_mode });
+    const state = database.preflight({ tlsMode: config.remote_sync.tls_mode });
     let result = { status: appended.appended ? 'projected' : 'already_applied' };
     for (const record of records.filter((item) => item.sequence > checkpoint.sequence && item.sequence <= appended.record.sequence)) {
-      result = writer.projectRecord(record, state, { tlsMode: config.remote_sync.tls_mode });
+      result = database.applyEvent(record, state, { tlsMode: config.remote_sync.tls_mode });
       outbox.writeCheckpoint(outputDir, { sequence: record.sequence, record_sha256: record.record_sha256, event_id: record.envelope.event_id, committed_at: new Date().toISOString() });
     }
     return { ok: true, event_id: appended.record.envelope.event_id, status: result.status, error: null, sequence: appended.record.sequence };
   } catch (error) {
     const code = error.code || error.message.match(/^([A-Z_]+):/)?.[1] || 'DB_UNAVAILABLE';
+    const needsAuthorization = authorizationRequired(code);
     if (error.retryable === false || new Set(['IDEMPOTENCY_CONFLICT', 'PROJECTION_FAILED', 'SCHEMA_INCOMPATIBLE', 'AUTH_REQUIRED', 'CONCURRENCY_CONFLICT']).has(code)) outbox.deadLetter(outputDir, appended.record, code);
     if (config.failure_policy === 'required') throw error;
-    return { ok: true, event_id: appended.record.envelope.event_id, status: 'pending_sync', error: { code, retryable: error.retryable === true }, sequence: appended.record.sequence };
+    return { ok: true, event_id: appended.record.envelope.event_id, status: 'pending_sync', error: { code, retryable: error.retryable === true, authorization_required: needsAuthorization, next_action: needsAuthorization ? 'retry_with_network_authorization' : null }, sequence: appended.record.sequence };
   }
 }
 
@@ -168,7 +173,7 @@ function initRun(args) {
       run_id: effectiveRunId,
       phase_code: 'P0',
       event_type: 'run.preflight_completed',
-      actor_type: 'writer',
+      actor_type: 'parent',
       causation_id: built.event.event_id,
       source_class: 'P',
       payload_type: 'run.preflight',
@@ -243,11 +248,11 @@ function syncOutbox(outputDir, config) {
     const records = outbox.readLines(file, true).records;
     const checkpoint = outbox.validateCheckpoint(records, outbox.readCheckpoint(outputDir));
     const options = { tlsMode: config.remote_sync.tls_mode };
-    const state = writer.preflight(options);
+    const state = database.preflight(options);
     let applied = 0;
     for (const record of records.filter((item) => item.sequence > checkpoint.sequence)) {
       try {
-        writer.projectRecord(record, state, options);
+        database.applyEvent(record, state, options);
         outbox.writeCheckpoint(outputDir, { sequence: record.sequence, record_sha256: record.record_sha256, event_id: record.envelope.event_id, committed_at: new Date().toISOString() });
         applied += 1;
       } catch (error) {
