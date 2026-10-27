@@ -25,10 +25,10 @@
     <div class="stat"><b>7</b><span>P0–P6 阶段</span></div>
     <div class="stat"><b>4</b><span>S / O / P / D 来源类</span></div>
   </section>
-  <div class="legend"><span><i class="dot s"></i>S 当前契约</span><span><i class="dot o"></i>O 平台可观察</span><span><i class="dot p"></i>P 拟新增</span><span><i class="dot d"></i>D 派生指标</span></div>
+  <div class="legend"><span><i class="dot s"></i>S 当前契约</span><span><i class="dot o"></i>O 平台可观察</span><span><i class="dot p"></i>P 方案新增且已实现</span><span><i class="dot d"></i>D 派生指标</span></div>
   <div class="toolbar">
     <input id="search" type="search" placeholder="搜索步骤、角色、表或字段" aria-label="搜索">
-    <select id="sourceFilter" aria-label="来源类型"><option value="all">全部来源</option><option>S 当前契约</option><option>O 可观察</option><option>P 拟新增</option><option>D 派生</option></select>
+    <select id="sourceFilter" aria-label="来源类型"><option value="all">全部来源</option><option>S 当前契约</option><option>O 可观察</option><option>P 方案新增且已实现</option><option>D 派生</option></select>
     <select id="phaseFilter" aria-label="阶段"><option value="all">全部阶段</option></select>
     <select id="roleFilter" aria-label="执行角色"><option value="all">全部角色</option></select>
     <select id="statusFilter" aria-label="操作类型"><option value="all">全部操作</option><option value="create">创建/追加</option><option value="transition">状态转换</option><option value="validate">校验/裁决</option><option value="sync">同步/提交</option></select>
@@ -57,7 +57,7 @@
     </section>
     <aside class="detail" id="detail" aria-live="polite"></aside>
   </div>
-  <footer>基线清单 SHA-256：<code>bac04717601a140814c5963b6277c1d3ab8df6225184c0c49a8a4721103effa0</code><br><a href="ai-security-v1-数据库逻辑模型.md">数据库逻辑模型</a> · <a href="ai-security-v1-流程数据库写入方案.md">流程写入方案</a> · <a href="ai-security-v1-telemetry-contract/README.md">机器可读契约包</a> · <a href="ai-security-v1-telemetry-contract/CONTRACT-STATUS.md">当前验证状态</a> · 来源路径均相对当前目录，便于整体分享。</footer>
+  <footer>逐文件基线清单 SHA-256：<code>ba4e7396c19c42e5fb7a2d0b7f416b978105f29fa892d46e0b8b9f20ad7f957d</code>；远程run使用的运行时清单 SHA-256：<code>92cd8f568d517434ee5ce9affaefd474fd9c0391c6d9e5620ff8058328b306ea</code><br><a href="ai-security-v1-数据库逻辑模型.md">数据库逻辑模型</a> · <a href="ai-security-v1-流程数据库写入方案.md">流程写入方案</a> · <a href="ai-security-v1-telemetry-contract/README.md">机器可读契约包</a> · <a href="ai-security-v1-telemetry-contract/CONTRACT-STATUS.md">当前验证状态</a> · 来源路径均相对当前目录，便于整体分享。</footer>
 </main>
 <script>
 const phases=['P0','P1','P2','P3','P4','P5','P6'];
@@ -180,42 +180,43 @@ const manifest=[
 ['DATA-ISOLATION-AND-LIFECYCLE.md','307dcb3e24d292715c4a041190e7bb135646a37eb6187619ae01d000a634a4ad'],
 ['DATABASE.md','198725a1640455b36fbf5bdb47d648194823d94b5568ce872da5f48933e5c71f'],
 ['DESKTOP-MOBILE-AND-LOCAL-IPC.md','58eae8ee0ca6a46611c501ec5a3ab47fdff88dd7db0d8d74789bbf8bb19d8cb2'],
-['HUNTING.md','e2fbaafb337ac02c7c856d5f9d7f29a6cc02f76b3b330adcbf3838ee6ec32e71'],
+['HUNTING.md','3232574dab32c1e9b4aa7a7fd6be7035c7fe37e8743a78913fedc55731ae2e5f'],
 ['MEMORY-SAFETY-AND-BINARY.md','7c8b0dccfb35315cca2455509674d49632b2fe37e1f3aac16c1a496a7e9924a7'],
 ['PROTOCOLS-RPC-AND-MESSAGING.md','8b73816fa5b3697c9c40977f0c836b40f01d6e81929ff2720fe83ce089e9a619'],
-['RECONNAISSANCE.md','cecf13929de44ca039e48882a0715ae1204ab8181349c161437eebb40354a6bf'],
+['RECONNAISSANCE.md','c005a9914e0c22f8be34af0c5d4ea9001e2e3606373008e7ff2f23d1a42f24ca'],
 ['RESOURCE-EXHAUSTION-AND-AVAILABILITY.md','4326fab5c92a0b4c420a70196254040105cd794026562130b59bf1a6db3e4baa'],
-['SKILL.md','5d1a3ae68529540a3bd05b3a1db0e77ac6fcd88b2eb1da96251fc8d4140f6ed2'],
+['SKILL.md','dce9fb07f8f2a6683895c55f127a1640a0581f2a41ee7bf4164a68efa3194ba8'],
 ['SUPPLY-CHAIN-AND-RELEASE.md','f372e919940e335468ba1ae09f99026c3986a345f7fe26f8068f132e199f52a5'],
 ['TELEMETRY-BASELINE.md','06902018c76f4c4ca7fead691791d2c31c51a2e5d8c7e0539b6eb4b6de5c8ca3'],
-['TELEMETRY.md','bbc88c6237b244a04e7f17f1cb42a805e7e707e49990d96e027c4d51782db26f'],
-['VALIDATION-AND-REPORTING.md','8282ab706f85c2d132e3da9b1066dcc9c7e64b77ab5fe56acb65c87b51ac32ef'],
+['TELEMETRY.md','b26bcef4a2795dd727d33a8eb0e196ccd07cb243b7c557f8fbbd0d81e91e64dd'],
+['VALIDATION-AND-REPORTING.md','aa14dae9f995bad1f6da14dfbad0118e541ff783ca15862ed757c8aeea6c7de8'],
 ['WEB-PROTOCOL-AND-AUTH.md','4f3066dffa23c5635859187be9b96c32f2aff29a688186b91ff0c63e47d62b5c'],
 ['agents/openai.yaml','a88ecb7f985f249160fd68ad7335e8fb62d8c583672855fedf643211e4de0d74'],
 ['references/telemetry/agent-process-extension.schema.json','337e2299abd762e8b848d8d31597409acbdfcebd572699e652ecb29b7ed44af2'],
-['references/telemetry/contract-manifest.json','9644af29a79fb65fdc91347cac48f3a272ac1be900ece4e41022f8d52ddea4ea'],
+['references/telemetry/contract-manifest.json','edbaf1b562f5de212233c61b066a35221cd397b0657a3627b0fb34b70ea4f5d8'],
 ['references/telemetry/event-envelope.schema.json','afbc9423c25a15471e8b97a4e13933d5142ef8cf47ae6b5288beb498939026ee'],
-['references/telemetry/projection-map.json','e266dafb21d05e90f8a77d71ea62ec2b48a6e8e5e24bfab89dfa5ec794126094'],
+['references/telemetry/projection-map.json','3ff16b55cb30728d40a70bb03f3f165b48356848692e2512732e8976b670fc1e'],
 ['references/telemetry/telemetry-config.schema.json','a394a4ff391d533f987413c1a456371affd755eed6c0fc87b06feb2bd54e422d'],
 ['report-schema.json','6575c9de4a62255699ea052ebf9a49ebfb373a32891bcd89af6f55cc84b35519'],
+['scripts/telemetry/agent-adapter.cjs','4d6f6f374a016d88ee9b301cbf9159f6222505ed8d853364cd3a22e3f979a3f5'],
 ['scripts/telemetry/canonical-json.cjs','e66d7150b9df5cf5ade2da90dd2f26e85815a9a568486460f3605538ee22fa7b'],
-['scripts/telemetry/cli.cjs','04218a00110f403ee53866a3f74ba0dc8881b85e8a06075247de50b5d558b089'],
+['scripts/telemetry/cli.cjs','0e3de342894fe2fb5bb98095e3213a4c0f879052118b6a4c7012624cc8e540e2'],
 ['scripts/telemetry/config.cjs','3345d5179376c037af5d0c4aaf8de2944e2116bfdf7e42a510b36ed8e47f2566'],
-['scripts/telemetry/event-builder.cjs','a258c05720b4555f60cbd3af7adc89d367da45f344e2302ebbf26459a5273e61'],
-['scripts/telemetry/mysql-writer.cjs','f2f5c1786f699575d3bf6e64c08b55a85d97891744526c35639beefc0b30c235'],
-['scripts/telemetry/outbox.cjs','3adad79009102ab9153f78debdb72508df07aa6225c5379d9b4c8b23c7fc167b'],
-['scripts/telemetry/projection.cjs','84d5fdb2583a920ea83082e59699bcc88b229d8b1b303ca3e8e810240bdda83f'],
-['scripts/telemetry/redactor.cjs','682af6cb2b88238439ef5689e8b9461af24bdf9c43b136fe3e51666dbd185959'],
+['scripts/telemetry/event-builder.cjs','b3e42da450b43d68124e066dfb34a4d5d931eb19afeb90059c4e5d49d5ffae6a'],
+['scripts/telemetry/mysql-writer.cjs','28e4cae56817a62aeda5d7826b2110b28ed8961bc4a98e945eae6de0ddb0e51b'],
+['scripts/telemetry/outbox.cjs','83ff9f66331ac0ccdff3f7ca21ba7712f9efc281a7cad0d1ccb1950e0e4fc754'],
+['scripts/telemetry/projection.cjs','e2b6b74961cf0e6fc24ea086fa75fd684680f62788b36e1a10c65ffc4fb428ae'],
+['scripts/telemetry/redactor.cjs','bc3e52b821d5c0e33d7fcff8fcfa45d3393c781de24abe884b61ee5a233fcbbe'],
 ['scripts/telemetry/schema-validator.cjs','bf96eee9b3fdae1570994573f4b62de3bfd88de1bca43bf359926463c447eea8'],
-['scripts/telemetry/tests/remote-lineage-acceptance.cjs','36a88d0f6cdad66626e22ac5b0cb237d39be2b880c4235bb679d23c3ca788614'],
-['scripts/telemetry/tests/telemetry.test.cjs','a4e00bdc7d933cf92bdf049164dc7e2deaad006c6609321166966efe1da0fb8f'],
+['scripts/telemetry/tests/remote-lineage-acceptance.cjs','e4240adb46552038c3bc820d6877074bac180a7a6554a3ac243f13a00ca11d0c'],
+['scripts/telemetry/tests/telemetry.test.cjs','467bff3c3ea2d3165eccf559939bcf28967c08c014009473605b23b8196c0b07'],
 ['scripts/telemetry/ulid.cjs','ce7ae43a60ddd0b9495d69d0e65328373e0d052faee315d7bd68dfe6f4e696cf'],
 ['validate-coverage-ledger.cjs','2eb280bd2e33c002916f86db9b29f9edfedb6454e5db973c766290465b868ac8'],
 ['validate-coverage-ledger.test.cjs','cfb9df26b03469a4279a70e7664a2a5434dd6f8c2c204e91f9b0aeb9dd71e648'],
 ['validate-findings.cjs','e85f232e36bfac0f866f244da50376692d6b45c690beadcb00608b0e6c8b5283'],
 ['validate-findings.test.cjs','b92001117a92c4161d43777a0ba2fa182a8a4d97f2304cc8c0cee5331497b73b']
 ];
-const manifestSha256='a0f1b7cd9ce2e23bef9c7831b9bb3381e6ba68ae8f5ce7e8292534984fc463af';
+const manifestSha256='ba4e7396c19c42e5fb7a2d0b7f416b978105f29fa892d46e0b8b9f20ad7f957d';
 const state={tab:'flow',selected:points[0],query:'',source:'all',phase:'all',role:'all',op:'all',hypothesis:'all',table:'all'};
 const flowGrid=document.getElementById('flowGrid'),detail=document.getElementById('detail');
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}

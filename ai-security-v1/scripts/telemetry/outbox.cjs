@@ -31,8 +31,22 @@ function withLock(outputDir, fn) {
   try {
     fd = fs.openSync(lockPath, 'wx', 0o600);
   } catch (error) {
-    if (error.code === 'EEXIST') throw new Error('OUTBOX_UNWRITABLE: writer lock is held');
-    throw error;
+    if (error.code === 'EEXIST') {
+      let stale = false;
+      try {
+        const stat = fs.lstatSync(lockPath);
+        const pid = Number(fs.readFileSync(lockPath, 'utf8').trim());
+        let alive = Number.isInteger(pid) && pid > 0;
+        if (alive) {
+          try { process.kill(pid, 0); } catch (probe) { if (probe.code === 'ESRCH') alive = false; }
+        }
+        stale = stat.isFile() && !stat.isSymbolicLink() && !alive && Date.now() - stat.mtimeMs > 300000;
+      } catch {}
+      if (stale) {
+        fs.unlinkSync(lockPath);
+        fd = fs.openSync(lockPath, 'wx', 0o600);
+      } else throw new Error('OUTBOX_UNWRITABLE: writer lock is held');
+    } else throw error;
   }
   try {
     fs.writeFileSync(fd, `${process.pid}\n`, 'utf8');
@@ -42,6 +56,10 @@ function withLock(outputDir, fn) {
     try { fs.closeSync(fd); } catch {}
     try { fs.unlinkSync(lockPath); } catch {}
   }
+}
+
+function findByIdempotency(records, runId, idempotencyKey) {
+  return records.find((record) => (runId == null || record.envelope.run_id === runId) && record.envelope.idempotency_key === idempotencyKey) || null;
 }
 
 function readLines(file, recoverTail = false) {
@@ -83,6 +101,14 @@ function append(outputDir, relativePath, built) {
     const file = resolveInside(outputDir, relativePath);
     fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
     const state = readLines(file, true);
+    const existing = findByIdempotency(state.records, built.event.event_type === 'run.initialized' ? null : built.event.run_id, built.event.idempotency_key);
+    if (existing) {
+      const oldRequest = existing.envelope.payload?.content?._telemetry?.request_sha256;
+      const newRequest = built.event.payload?.content?._telemetry?.request_sha256;
+      if (oldRequest && newRequest && oldRequest === newRequest) return { record: existing, recovered_tail: state.recovered, appended: false };
+      if (existing.envelope_sha256 === built.envelope_sha256) return { record: existing, recovered_tail: state.recovered, appended: false };
+      throw new Error('IDEMPOTENCY_CONFLICT: same run and idempotency key has different request content');
+    }
     const previous = state.records.length ? state.records[state.records.length - 1].record_sha256 : null;
     const envelopeText = canonicalJson(built.event);
     const envelopeSha256 = sha256(envelopeText);
@@ -97,7 +123,7 @@ function append(outputDir, relativePath, built) {
     const record = { ...base, record_sha256: sha256(canonicalJson(base)) };
     const fd = fs.openSync(file, 'a', 0o600);
     try { fs.writeSync(fd, `${canonicalJson(record)}\n`, null, 'utf8'); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
-    return { record, recovered_tail: state.recovered };
+    return { record, recovered_tail: state.recovered, appended: true };
   });
 }
 
@@ -139,4 +165,4 @@ function deadLetter(outputDir, record, errorCode, retryCount = 0) {
   try { fs.writeSync(fd, `${canonicalJson(item)}\n`, null, 'utf8'); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
 }
 
-module.exports = { append, deadLetter, ensureTelemetryDir, readCheckpoint, readLines, resolveInside, validateCheckpoint, writeCheckpoint, withLock };
+module.exports = { append, deadLetter, ensureTelemetryDir, findByIdempotency, readCheckpoint, readLines, resolveInside, validateCheckpoint, writeCheckpoint, withLock };

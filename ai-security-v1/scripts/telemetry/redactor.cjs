@@ -59,12 +59,20 @@ function redactPayload(payload, options = {}) {
   const text = canonicalJson(redacted);
   const stored = Buffer.byteLength(text);
   if (stored > maxBytes) {
-    const summary = { truncated: true, original_bytes: originalBytes, redacted_bytes: stored, top_level_keys: Object.keys(redacted).slice(0, 128) };
+    const control = {
+      _telemetry: redacted._telemetry || null,
+      projections: Array.isArray(redacted.projections) ? redacted.projections : []
+    };
+    const controlBytes = Buffer.byteLength(canonicalJson(control));
+    if (controlBytes > maxBytes) {
+      return { redaction_status: 'blocked', content: null, content_sha256: null, original_bytes: originalBytes, stored_bytes: 0, is_truncated: false, error_code: 'REDACTION_BLOCKED' };
+    }
+    const summary = { ...control, truncated: true, original_bytes: originalBytes, redacted_bytes: stored, top_level_keys: Object.keys(redacted).slice(0, 128) };
     const summaryText = canonicalJson(summary);
     return {
       redaction_status: state.changed ? 'redacted' : 'passed',
       content: summary,
-      content_sha256: crypto.createHash('sha256').update(summaryText).digest('hex'),
+      content_sha256: crypto.createHash('sha256').update(text).digest('hex'),
       original_bytes: originalBytes,
       stored_bytes: Buffer.byteLength(summaryText),
       is_truncated: true,

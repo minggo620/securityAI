@@ -13,7 +13,7 @@ const { validateProcess } = require('../schema-validator.cjs');
 const { redactPayload } = require('../redactor.cjs');
 const { buildEvent, normalizeIdempotencyKey } = require('../event-builder.cjs');
 const outbox = require('../outbox.cjs');
-const { operationsFor, operationSql } = require('../projection.cjs');
+const { operationsFor, operationSql, validateEventAgainstHistory } = require('../projection.cjs');
 
 test('canonical JSON sorts object keys and preserves array order', () => {
   assert.equal(canonicalJson({ z: 1, a: [{ y: 2, x: 1 }] }), '{"a":[{"x":1,"y":2}],"z":1}');
@@ -202,4 +202,106 @@ test('all five Parent CLI interfaces preserve a local append-only run', () => {
   assert.notEqual(flush.status, 0);
   assert.equal(JSON.parse(flush.stdout).error.code, 'AUTH_REQUIRED');
   assert.equal(outbox.readLines(path.join(directory, 'telemetry/outbox.jsonl')).records.length, 4);
+});
+
+test('event contract rejects missing business projections and wrong phases', () => {
+  const built = sampleBuilt();
+  built.event.payload.content.projections = [];
+  assert.throws(() => operationsFor(built.event), /missing required projection/);
+  const other = sampleBuilt();
+  other.event.event_type = 'run.preflight_completed';
+  other.event.phase_code = 'P1';
+  other.event.payload.content.projections = [{ table: 'audit_run', action: 'update', values: { run_status: 'in_progress', row_version: 1 }, where: { run_id: other.event.run_id, row_version: 0 } }];
+  assert.throws(() => operationsFor(other.event), /not allowed/);
+});
+
+test('hypothesis baseline score is recomputed and mismatch is rejected', () => {
+  const built = buildEvent({ run_id: ulid(), phase_code: 'P2', event_type: 'hypothesis.created', idempotency_key: 'score/check', payload: { projections: [
+    { table: 'audit_hypothesis', action: 'insert', values: { hypothesis_id: ulid() } },
+    { table: 'audit_hypothesis_version', action: 'insert', values: { hypothesis_version_id: ulid() } },
+    { table: 'audit_hypothesis_coverage', action: 'insert', values: { hypothesis_coverage_id: ulid() } },
+    { table: 'audit_hypothesis_score', action: 'insert', values: { predicted_probability: 0.5, potential_impact: 0.8, coverage_value: 0.2, information_gain: 0.1, estimated_validation_cost: 0.5, validation_cost_unit: 'normalized', priority_score: 9, formula_name: 'hypothesis-research-baseline', formula_version: '1.0' } }
+  ] }, source_refs: [] }, defaultConfig());
+  assert.throws(() => operationsFor(built.event), /priority_score/);
+  built.event.payload.content.projections[3].values.priority_score = (0.5 * 0.8 + 0.2 + 0.1) / 1.5;
+  assert.doesNotThrow(() => operationsFor(built.event));
+});
+
+test('validation independence is mechanically checked', () => {
+  const verifier = ulid();
+  const built = buildEvent({ run_id: ulid(), phase_code: 'P3', event_type: 'validation.started', idempotency_key: 'validation/start', causation_id: ulid(), payload: {
+    independence: { verifier_task_id: verifier, prohibited_task_ids: [verifier], checked_at: new Date().toISOString() },
+    projections: [{ table: 'audit_validation', action: 'insert', values: { validation_id: ulid(), verifier_task_id: verifier, independence_status: 'passed' } }]
+  }, source_refs: [] }, defaultConfig());
+  assert.throws(() => operationsFor(built.event), /not independent/);
+  built.event.payload.content.independence.prohibited_task_ids = [ulid()];
+  assert.doesNotThrow(() => operationsFor(built.event));
+});
+
+test('causal ordering rejects attack execution before its plan', () => {
+  const runId = ulid();
+  const plan = buildEvent({ run_id: runId, phase_code: 'P2', event_type: 'attack.plan_created', idempotency_key: 'plan/1', causation_id: ulid(), payload: { projections: [
+    { table: 'audit_attack_plan', action: 'insert', values: { attack_plan_id: ulid() } },
+    { table: 'audit_attack_step', action: 'insert', values: { attack_step_id: ulid() } }
+  ] }, source_refs: [] }, defaultConfig());
+  const execution = buildEvent({ run_id: runId, phase_code: 'P2', event_type: 'attack.step_observed', idempotency_key: 'execute/1', causation_id: plan.event.event_id, payload: { projections: [{ table: 'audit_attack_execution', action: 'insert', values: { attack_execution_id: ulid() } }] }, source_refs: [] }, defaultConfig());
+  assert.throws(() => validateEventAgainstHistory(execution.event, []), /absent/);
+  assert.doesNotThrow(() => validateEventAgainstHistory(execution.event, [{ envelope: plan.event }]));
+});
+
+test('Outbox retry is idempotent and conflicting reuse is rejected', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'telemetry-idempotent-'));
+  const built = sampleBuilt();
+  const first = outbox.append(directory, 'telemetry/outbox.jsonl', built);
+  const retry = outbox.append(directory, 'telemetry/outbox.jsonl', built);
+  assert.equal(first.appended, true);
+  assert.equal(retry.appended, false);
+  const conflict = structuredClone(built);
+  conflict.event.payload.content._telemetry.request_sha256 = 'f'.repeat(64);
+  const text = canonicalJson(conflict.event);
+  conflict.envelope_sha256 = require('node:crypto').createHash('sha256').update(text).digest('hex');
+  assert.throws(() => outbox.append(directory, 'telemetry/outbox.jsonl', conflict), /IDEMPOTENCY_CONFLICT/);
+});
+
+test('oversized payload preserves projection controls', () => {
+  const config = { ...defaultConfig(), payload_max_bytes: 2000 };
+  const built = buildEvent({ run_id: ulid(), phase_code: 'P1', event_type: 'phase.started', idempotency_key: 'oversized/1', payload: {
+    raw_agent_output: 'x'.repeat(10000), projections: [{ table: 'audit_phase_execution', action: 'insert', values: { phase_execution_id: ulid() } }]
+  }, source_refs: [] }, config);
+  assert.equal(built.event.payload.is_truncated, true);
+  assert.equal(built.event.payload.content.projections.length, 1);
+  assert.equal(built.event.payload.content_sha256, require('node:crypto').createHash('sha256').update(canonicalJson({ raw_agent_output: 'x'.repeat(10000), projections: [{ table: 'audit_phase_execution', action: 'insert', values: { phase_execution_id: built.event.payload.content.projections[0].values.phase_execution_id } }], _telemetry: built.event.payload.content._telemetry })).digest('hex'));
+  assert.doesNotThrow(() => operationsFor(built.event));
+});
+
+test('init-run retry with request key creates one Outbox record', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'telemetry-init-retry-'));
+  const cli = path.join(__dirname, '../cli.cjs');
+  const input = { repo: 'synthetic', target: 'synthetic', source_ref: 'abc123', profile: 'quick', scope_paths: [], request_idempotency_key: 'stable-request-1' };
+  const one = cp.spawnSync(process.execPath, [cli, 'init-run', '--output-dir', directory], { input: JSON.stringify(input), encoding: 'utf8' });
+  const two = cp.spawnSync(process.execPath, [cli, 'init-run', '--output-dir', directory], { input: JSON.stringify(input), encoding: 'utf8' });
+  assert.equal(one.status, 0, one.stdout);
+  assert.equal(two.status, 0, two.stdout);
+  assert.equal(JSON.parse(two.stdout).status, 'already_applied');
+  assert.equal(outbox.readLines(path.join(directory, 'telemetry/outbox.jsonl')).records.length, 1);
+});
+
+test('Recon agent result is automatically validated and projected', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'telemetry-agent-adapter-'));
+  const cli = path.join(__dirname, '../cli.cjs');
+  const initialized = cp.spawnSync(process.execPath, [cli, 'init-run', '--output-dir', directory], { input: JSON.stringify({ repo: 'synthetic', target: 'synthetic', source_ref: 'abc', profile: 'quick' }), encoding: 'utf8' });
+  const init = JSON.parse(initialized.stdout);
+  const input = { run_id: init.run_id, phase_code: 'P1', actor_type: 'recon', agent_task_id: ulid(), idempotency_key: `run/${init.run_id}/P1/recon/r1`, context: { phase_execution_id: init.phase_execution_id, task_row_version: 0, accepted_fact_ids: ['fact-1'] }, agent_result: { summary: 'observable core result', _process: {
+    schema_version: '1.4.0', result_type: 'recon', agent_id: 'recon-1', explicit_rationale: 'Direct source observation.', observations: [],
+    evidence_refs: [{ ref_id: 'ref-1', fact_kind: 'source_fact', relative_path: 'src/app.js', start_line: 1, end_line: 2, scope: 'entry', description: 'Entry is reachable.', strength: 'direct' }],
+    recon_facts: [{ fact_id: 'fact-1', recon_kind: 'surfaces_sinks', fact_kind: 'source_fact', statement: 'Reachable entry.', evidence_ref_ids: ['ref-1'], evidence_strength: 'direct', unknown_reason: null }]
+  } } };
+  const recorded = cp.spawnSync(process.execPath, [cli, 'record-event', '--output-dir', directory], { input: JSON.stringify(input), encoding: 'utf8' });
+  assert.equal(recorded.status, 0, recorded.stdout);
+  const retry = cp.spawnSync(process.execPath, [cli, 'record-event', '--output-dir', directory], { input: JSON.stringify(input), encoding: 'utf8' });
+  assert.equal(retry.status, 0, retry.stdout);
+  assert.equal(JSON.parse(retry.stdout).status, 'already_applied');
+  const records = outbox.readLines(path.join(directory, 'telemetry/outbox.jsonl')).records;
+  assert.deepEqual(records.slice(-2).map((record) => record.envelope.event_type), ['recon.fact_recorded', 'agent.task_completed']);
+  assert.equal(records.length, 3);
 });

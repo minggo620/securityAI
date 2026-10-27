@@ -83,7 +83,7 @@ execution_visibility, or focused. Do not include credentials, host absolute path
 complete environments, authentication state, or hidden chain-of-thought.
 ```
 
-After a Recon return, the Parent first validates and consumes `facts`, then validates `_process`, records the redacted output snapshot, creates one `recon.fact_recorded` event per accepted/unknown fact with its evidence, and completes the Agent task (`DB-P1-02`). `accepted_by_parent` and `included_in_architecture` are Parent decisions, never Agent assertions. Record the platform model provider/name/version/reasoning effort only when observable; otherwise store null rather than guessing.
+After a Recon return, the Parent first validates and consumes `facts`, then passes the complete result and trusted acceptance/context maps to `record-event`. The runtime `agent-adapter.cjs` validates `_process`, records the redacted output snapshot, creates one `recon.fact_recorded` event per fact with its evidence, and completes the Agent task (`DB-P1-02`). A valid sidecar must not be retained only as an opaque payload. `accepted_by_parent` and `included_in_architecture` are Parent decisions, never Agent assertions. Record the platform model provider/name/version/reasoning effort only when observable; otherwise store null rather than guessing.
 
 Add focused reconnaissance agents for materially distinct deployment modes or subsystems that these four do not map. Do not silently omit them: if the budget gate in `SKILL.md` blocks a focused agent, launch nothing for it, seed the unmapped area as a `deferred` ledger unit with reason `budget_cannot_reserve_critics_and_validation`, and disclose the gap in the report.
 

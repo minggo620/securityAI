@@ -3,7 +3,7 @@
 > 验收日期：2026-10-27（Asia/Shanghai）  
 > 数据库结构：`1.3.0-core`  
 > Telemetry 协议：`1.4.0`  
-> 最终 Skill 清单：41 个文件，SHA-256 `a0f1b7cd9ce2e23bef9c7831b9bb3381e6ba68ae8f5ce7e8292534984fc463af`
+> 最终 Skill 文件：42 个；运行时清单 SHA-256 `92cd8f568d517434ee5ce9affaefd474fd9c0391c6d9e5620ff8058328b306ea`
 
 ## 1. 结论
 
@@ -15,13 +15,15 @@
 
 - `SKILL.md` 增加 P0、Telemetry 模式和旁路不变量。
 - Recon、Hunter、Critic、Verifier 保留原核心结果，并增加独立 `_process` sidecar。
+- `agent-adapter.cjs`自动验证并规范化Agent sidecar；Parent只提交可信上下文，Agent不能生成数据库ID、投影或SQL。
 - Hunter 分为 `hunter_plan` 和 `hunter_result`，验证前评分在针对性验证前冻结。
+- 运行时重算验证前评分，强制阶段、必需业务投影和因果前驱；Verifier独立性由任务ID集合机械校验。
 - 五个接口：`init-run`、`record-event`、`record-snapshot`、`flush-outbox`、`finalize-run`。
 - Outbox 记录 canonical envelope 字节数、envelope SHA-256、前序记录哈希和当前记录哈希；完整追加后 `fsync`。
 - checkpoint 必须精确匹配 Outbox 链；尾部半行可恢复，中间损坏、哈希或长度不符会阻断重放。
-- 同一幂等键/同一 envelope 返回 `already_applied`；同键不同 envelope 进入 dead-letter。
+- 同一幂等键/同一稳定请求返回 `already_applied`；Agent实体ID确定性派生，部分重试保持同一因果链；同键不同请求进入冲突/死信处理。
 - 运行时四份 schema/projection 与外部契约逐字节一致。
-- Writer 不导出任意 SQL 接口，只能使用事件表 allowlist、固定数据库、固定 36 表/527 列指纹、prepared INSERT、CAS UPDATE、幂等 SELECT 和事务控制。
+- Writer 不导出任意 SQL 接口，只能使用事件表 allowlist、固定数据库、MySQL 8.0.26、固定 36 表/527 列指纹、102个外键、104个CHECK、排序规则指纹、prepared INSERT、CAS UPDATE、幂等 SELECT 和事务控制；连接与操作均有超时。
 - 凭据、认证头、私钥、连接串、完整环境、主机绝对路径和隐藏推理不进入 retained payload。
 
 ## 3. 自动化验收结果
@@ -31,16 +33,16 @@
 | 原 Findings 校验器 | 34/34 PASS |
 | 原 Coverage Ledger 校验器 | 31/31 PASS |
 | 原流程合计 | 65/65 PASS |
-| 新 Telemetry 单元与接口测试 | 16/16 PASS |
+| 新 Telemetry 单元与接口测试 | 24/24 PASS |
 | `verify-contract.cjs` | PASS；32 类事件、36 表 |
 | `verify-skill-db-alignment.cjs` | PASS；527 字段、13 来源契约、179 规范化目标 |
 | Skill `quick_validate.py` | PASS |
 | 运行时/外部契约副本 | 4/4 逐字节一致 |
 | HTML 内联 JavaScript 语法 | PASS |
 | HTML 外部 HTTP/HTTPS 请求 | 0 |
-| Skill 清单 | 41/41 文件哈希一致 |
+| Skill 项目/远程清单 | 42个文件；运行时哈希与最终远程run一致 |
 
-Telemetry 测试覆盖：ULID 单调性、canonical JSON、完整 schema、远程授权、脱敏、5 MiB 上限、循环对象 blocked、幂等键规范化、危险源码路径、Outbox 链、尾部恢复、篡改检测、checkpoint 对齐、表 allowlist、CAS、`off`、`local`、远程断线 `best_effort` 以及五个 Parent CLI 接口。
+Telemetry 测试覆盖：ULID 单调性、canonical JSON、完整 schema、远程授权、脱敏、5 MiB 上限及完整内容哈希、循环对象 blocked、幂等键规范化、Agent结果自动接入与重复提交、危险源码路径、Outbox 链、尾部恢复、篡改检测、checkpoint 对齐、业务投影必需性、阶段/因果顺序、评分重算、Verifier独立性、表 allowlist、CAS、`off`、`local`、远程断线 `best_effort` 以及五个 Parent CLI 接口。
 
 ## 4. 远程 ai_security 验收
 
@@ -48,18 +50,19 @@ Telemetry 测试覆盖：ULID 单调性、canonical JSON、完整 schema、远�
 
 ```text
 repo   = __ai_security_v1_acceptance__
-run_id = 01M5WJHH0GWHDBZP15X9NBHV6Y
+run_id = 01M5XQ45SQF7W1B4MDGQ4XQB9Y
 ```
 
 验证结果：
 
 - MySQL `8.0.26`，TLS cipher 已协商；TLS 身份未验证仍记录为 accepted risk。
-- 36 表、527 列与固定 SHA-256 `6e59feddd4f17ee8269c847a2954a3d8228b37cffeb9e4a722cf1ad58c4634f3` 一致。
-- run 最终状态为 `complete / synced / empty`，`row_version=1`。
-- 17 个事件，17 个不同 idempotency hash，17 个不同 envelope hash。
+- 36 表、527 列、102个外键、104个CHECK、36张`utf8mb4_general_ci`表及227个utf8mb4字符列与固定契约一致。
+- run 最终状态为 `complete / synced / empty`，`row_version=3`。
+- 42 条事件实际覆盖projection map的32/32种事件类型；没有用静态声明代替远程写入。
 - 真实写入了模型任务、假设版本、验证前评分、攻击计划、实际执行、candidate、独立 validation、decision、finding revision 和人工 adjudication。
 - 内部 Finding 为 `confirmed`，人工 adjudication 独立记录为 `false_positive`，证明两类标签没有混用。
-- P0 事件重复投递返回 `already_applied`，没有产生第二份业务版本。
+- P0 envelope重复投递返回`already_applied`；本地Agent自动适配重复提交也返回`already_applied`且Outbox不增长。
+- 最终run保存的Skill清单哈希与当前项目运行时代码完全相同：`92cd8f568d517434ee5ce9affaefd474fd9c0391c6d9e5620ff8058328b306ea`。
 
 合成数据按用户要求保留，运行时 Writer 不具备删除能力；后续可按 repo、run ID 和时间范围由单独获批的管理操作清理。
 

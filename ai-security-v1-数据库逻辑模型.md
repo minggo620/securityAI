@@ -1594,7 +1594,7 @@ LEFT JOIN audit_human_adjudication ha ON ha.adjudication_id=(
 
 ## 12. Skill 基线清单与可复现算法
 
-基线哈希不包含绝对路径。算法为：对 `ai-security-v1/` 下所有受控文件按 UTF-8 相对路径字节序排序，为每个文件生成 `<sha256><two spaces><relative-path>\n`，再对这份 manifest 的原始字节计算 SHA-256。本版结果为 `bac04717601a140814c5963b6277c1d3ab8df6225184c0c49a8a4721103effa0`。HTML 内嵌逐文件摘要，便于离线核对。
+基线哈希不包含绝对路径。算法为：对 `ai-security-v1/` 下全部42个文件按 UTF-8 相对路径字节序排序，为每个文件生成 `<sha256><two spaces><relative-path>\n`，再对这份 manifest 的原始字节计算 SHA-256。本版逐文件清单结果为 `ba4e7396c19c42e5fb7a2d0b7f416b978105f29fa892d46e0b8b9f20ad7f957d`。远程run使用运行时受控文件算法（排除测试目录）得到 `92cd8f568d517434ee5ce9affaefd474fd9c0391c6d9e5620ff8058328b306ea`，与最终远程验收run一致。HTML 内嵌逐文件摘要，便于离线核对。
 
 ## 13. 实施前必须完成的验证
 

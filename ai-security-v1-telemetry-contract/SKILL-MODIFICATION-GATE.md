@@ -14,7 +14,7 @@
 4. `verify-contract.cjs`和`verify-skill-db-alignment.cjs`必须通过。
 5. 原有两个Skill校验器的65项测试必须继续通过。
 6. Skill内嵌的四份运行时schema/projection必须与外部契约逐字节一致。
-7. Writer预检必须匹配36表、527列及固定列指纹；只匹配表数不够。
+7. Writer预检必须匹配MySQL 8.0.26、36表、527列及固定列指纹、102个外键、104个CHECK、36张`utf8mb4_general_ci`表和227个utf8mb4字符列；只匹配表数不够。
 
 ## 用户接受、但不是安全通过的偏差
 
@@ -39,12 +39,14 @@
 
 - 原有核心结果保持权威；过程数据放在可选顶层`_process`。
 - `_process`按`agent-process-extension.schema.json`验证，不记录隐藏思维链。
+- 有效Agent结果必须经过`agent-adapter.cjs`自动生成规范化事件和实体ID；不得只把`_process`保存在原始payload后停止。
 - best-effort下，畸形sidecar不破坏有效核心结果；required模式按预算重试或incomplete。
 - Hunter使用`hunter_plan`和`hunter_result`两个检查点，验证前评分必须先于针对性验证冻结。
 
 ### Parent事件
 
 - 只生成projection map允许的事件和表操作。
+- 每类事件必须包含`required_tables`声明的业务投影，阶段必须匹配，带先决关系的事件必须用`causation_id`引用同一run内已落Outbox的允许事件。
 - Agent不得生成ULID、数据库主键、幂等键、投影、SQL或直接写Outbox。
 - Authoritative文件先由Parent安全写入并执行原有校验，再记录文件哈希事件。
 - 数据库是旁路副本，不能成为当前审计的证据或裁决输入。
@@ -75,6 +77,9 @@ Hunter observation
 5. 相同事件重放不产生第二个hypothesis version、attack execution或finding revision。
 6. P5 validation可定位唯一finding revision。
 7. 验证前评分在攻击执行前冻结，且不会被最终结果回填。
+8. 基线优先级由运行时重算；错误公式、非归一化成本或超过`1e-6`的结果偏差必须拒绝。
+9. `validation.started`的Verifier必须与完整禁止任务集合机械比较，证明与投影行一致。
+10. 远程合成验收必须覆盖projection map的32/32类事件，不接受抽样事件集替代完整矩阵。
 
 ## 仍会阻止运行的条件
 
@@ -82,5 +87,5 @@ Hunter observation
 - JSON协议major版本不兼容。
 - 本地Outbox路径不安全、不可写或中间记录损坏，且failure policy为`required`。
 - remote模式缺少有效`remote_mysql`授权。
-- 幂等键相同但envelope hash不同。
+- 幂等键相同但稳定请求哈希不同。
 - Writer试图访问allowlist外表、列、数据库或SQL类别。

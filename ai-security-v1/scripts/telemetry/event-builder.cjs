@@ -19,11 +19,22 @@ function sha256(value) {
 
 function buildEvent(input, config) {
   const idempotencyKey = normalizeIdempotencyKey(input.idempotency_key);
+  const requestMaterial = structuredClone(input);
+  delete requestMaterial.event_id;
+  delete requestMaterial.occurred_at;
+  delete requestMaterial.request_sha256;
+  if (requestMaterial.payload?._telemetry) {
+    delete requestMaterial.payload._telemetry.payload_id;
+    delete requestMaterial.payload._telemetry.request_sha256;
+  }
+  const requestSha256 = input.request_sha256 || sha256(canonicalJson(requestMaterial));
+  if (!/^[0-9a-f]{64}$/.test(requestSha256)) throw new Error('INVALID_ENVELOPE: invalid request_sha256');
   const rawPayload = input.payload && typeof input.payload === 'object' && !Array.isArray(input.payload) ? structuredClone(input.payload) : {};
   rawPayload._telemetry = {
     ...(rawPayload._telemetry || {}),
     payload_id: rawPayload._telemetry?.payload_id || ulid(),
-    phase_execution_id: rawPayload._telemetry?.phase_execution_id || null
+    phase_execution_id: rawPayload._telemetry?.phase_execution_id || null,
+    request_sha256: requestSha256
   };
   const redaction = redactPayload(rawPayload, { maxBytes: config.payload_max_bytes });
   const payload = redaction.content === null ? {

@@ -70,7 +70,7 @@ Retain the returned `run_id` and `phase_execution_id` in `run-metadata.json`. If
 
 ### Record an event
 
-`record-event` accepts the event descriptor. The Parent supplies business-local keys; the CLI generates the event and payload ULIDs.
+`record-event` has two trusted-Parent inputs. For ordinary Parent/platform events it accepts an explicit event descriptor. For an Agent return, pass the already validated core result as `agent_result` plus trusted `context`; `agent-adapter.cjs` validates `_process`, generates all ULIDs and projections, and returns the created entity map. This is the required path for Recon, Hunter, Critic, and Verifier results; do not hand-copy their sidecar fields into SQL-shaped JSON.
 
 ```json
 {
@@ -89,6 +89,7 @@ Retain the returned `run_id` and `phase_execution_id` in `run-metadata.json`. If
     "projections":[
       {"table":"audit_hypothesis","action":"insert","values":{}},
       {"table":"audit_hypothesis_version","action":"insert","values":{}},
+      {"table":"audit_hypothesis_coverage","action":"insert","values":{}},
       {"table":"audit_hypothesis_score","action":"insert","values":{}}
     ]
   },
@@ -96,9 +97,20 @@ Retain the returned `run_id` and `phase_execution_id` in `run-metadata.json`. If
 }
 ```
 
-Projection operations are an internal Parent-to-Writer contract. Each event may touch only the tables listed for its event type in `projection-map.json`. Values may use `$run_id`, `$event_id`, `$payload_id`, and `$agent_task_id`; the trusted Writer resolves them. Binary values use `{"$hex":"..."}` and JSON values use `{"$json":{...}}`. Updates require a nonempty `where`; tables with `row_version` require compare-and-swap values in both `values` and `where`.
+Projection operations are an internal Parent-to-Writer contract. Each event may touch only the tables listed for its event type in `projection-map.json`, and every table in that event's `required_tables` must be present. The runtime rejects a valid-looking event with zero business rows. It also enforces the declared phase and causal predecessor before Outbox append. Values may use `$run_id`, `$event_id`, `$payload_id`, and `$agent_task_id`; the trusted Writer resolves them. Binary values use `{"$hex":"..."}` and JSON values use `{"$json":{...}}`. Updates require a nonempty `where`; tables with `row_version` require compare-and-swap values in both `values` and `where`.
 
-Do not let an Agent construct `projections`, ULIDs, idempotency keys, SQL, or database column names. The Parent translates a valid core result and valid `_process` sidecar into projections.
+Do not let an Agent construct `projections`, ULIDs, idempotency keys, SQL, or database column names. For Agent returns, the Parent supplies only trusted context mappings (phase/task IDs, accepted fact IDs, coverage/entity IDs and row versions); the adapter translates the valid core result and valid `_process` sidecar. Adapter-owned IDs are deterministically derived from run, task, request idempotency key, and a typed logical entity key, so a partial retry recreates the same IDs and causal links. The CLI response's `entities` map is the only generated ID map that may be carried into the next checkpoint.
+
+An Agent-result input has this outer form:
+
+```json
+{
+  "run_id":"01...", "phase_code":"P1", "actor_type":"recon",
+  "agent_task_id":"01...", "idempotency_key":"run/01.../P1/recon/r1",
+  "agent_result":{"...core result":"...", "_process":{"schema_version":"1.4.0","result_type":"recon","agent_id":"recon-1","explicit_rationale":"...","evidence_refs":[],"observations":[],"recon_facts":[]}},
+  "context":{"phase_execution_id":"01...","task_row_version":0,"accepted_fact_ids":[],"architecture_fact_ids":[]}
+}
+```
 
 ### Record snapshots
 
@@ -125,7 +137,7 @@ The original core result remains authoritative. The optional top-level `_process
 }
 ```
 
-The Parent first validates and processes the existing core result, strips `_process`, then validates the sidecar separately. In `best_effort`, a missing or malformed sidecar causes `process_missing`/`discarded` telemetry but cannot invalidate an otherwise valid core result. In `required`, retry within the budget or finish incomplete.
+The Parent first validates and processes the existing core result, then gives the complete result to `record-event`; the adapter separates and validates `_process`. In `best_effort`, a missing or malformed sidecar causes `process_missing`/`discarded` telemetry but cannot invalidate an otherwise valid core result. In `required`, retry within the budget or finish incomplete. A valid sidecar must never remain only inside an Agent payload: successful adapter output must include the corresponding normalized events and an `agent.task_completed` event.
 
 Never request or retain hidden chain-of-thought. `explicit_rationale` means a concise, reviewable explanation tied to evidence, alternatives, controls, and observations.
 
@@ -159,17 +171,19 @@ The version-1 priority calculation is observational and does not reorder the cur
 
 All components and normalized cost are in `[0,1]`. Store `formula_name=hypothesis-research-baseline` and `formula_version=1.0`. Freeze the score before targeted validation and never backfill it from a later verdict.
 
+The runtime recomputes this formula with a `1e-6` tolerance. It rejects a non-normalized cost, another formula identifier, or a mismatched `priority_score`. `attack.plan_created` must causally reference the recorded hypothesis event; `attack.step_observed` must causally reference the recorded plan event. Therefore the second checkpoint cannot be appended before the first.
+
 The execution checkpoint distinguishes `source_only`, `local`, and `not_executed`, and uses `succeeded`, `failed`, `blocked`, or `skipped`. A planned step is never evidence that an attack ran.
 
 ## Delivery, redaction, and failure invariants
 
 - The Outbox is `telemetry/outbox.jsonl`; checkpoint, dead-letter, and exclusive lock are in the same Parent-owned directory.
 - Every record binds its canonical envelope byte length, envelope SHA-256, previous-record SHA-256, and record SHA-256, and is fsynced after complete append. An incomplete final line may be removed to the last verified boundary; an envelope/hash/length mismatch or middle corruption blocks replay.
-- Delivery is at least once. `(run_id,idempotency_hash)` plus `envelope_sha256` gives idempotent database effects; a same-key/different-envelope conflict is dead-lettered.
+- Delivery is at least once. The Outbox first deduplicates a retry by stable request hash; MySQL then deduplicates `(run_id,idempotency_hash)` plus `envelope_sha256`. A same-key/different-request conflict is rejected and a non-retryable remote conflict is dead-lettered. Remote inline sync always advances from the verified checkpoint in sequence; it never skips an older pending record.
 - Payloads are redacted before Outbox append. Passwords, credentials, authorization state, complete environments, private keys, connection strings, absolute host paths, and hidden reasoning are forbidden.
-- The per-payload limit is 5 MiB. Oversized data stores bounded metadata/summary, original length, and truncation state.
+- The per-payload limit is 5 MiB. Oversized data stores bounded metadata/summary, original length, and truncation state while preserving the small trusted `_telemetry` and `projections` control section. If that control section itself exceeds the limit, redaction blocks the payload rather than silently dropping database work.
 - Redaction failure stores metadata only with `redaction_status=blocked`.
-- Remote Writer SQL is restricted to the 36-table/event allowlist, prepared statements, inserts, compare-and-swap updates, and transaction control. No delete, DDL, privilege statement, dynamic table name, stored program, or other database is allowed.
+- Remote Writer SQL is restricted to the 36-table/event allowlist, prepared statements, inserts, compare-and-swap updates, and transaction control. No delete, DDL, privilege statement, dynamic table name, stored program, or other database is allowed. Connections use a bounded connect/operation timeout; preflight pins MySQL version, table/column hash, foreign-key count, check-constraint count and `utf8mb4_general_ci`/`utf8mb4` counts.
 - MySQL/Writer/Outbox failures are telemetry facts, never target vulnerabilities.
 
 ## Completion checks

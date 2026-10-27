@@ -137,6 +137,9 @@ if (new Set(eventTypes).size !== eventTypes.length) fail('duplicate projection e
 for (const entry of projection.events) {
   if (!/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/.test(entry.event_type)) fail(`invalid event type: ${entry.event_type}`);
   for (const table of entry.tables) if (!tableSet.has(table)) fail(`projection references non-core table ${table} in ${entry.event_type}`);
+  if (!Array.isArray(entry.required_tables)) fail(`projection lacks required_tables: ${entry.event_type}`);
+  for (const table of entry.required_tables) if (!entry.tables.includes(table) || table === 'audit_event' || table === 'audit_payload') fail(`invalid required table ${table} in ${entry.event_type}`);
+  for (const prior of entry.requires_prior_event || []) if (!eventTypes.includes(prior)) fail(`unknown causal predecessor ${prior} in ${entry.event_type}`);
 }
 const projectedTables = new Set(projection.events.flatMap((entry) => entry.tables));
 for (const table of expectedTables) {
@@ -164,6 +167,15 @@ if (target.connection_observation.verify_identity_result !== 'blocked_missing_tr
 if (target.blockers_before_remote_writer.length !== 0 || !target.accepted_risks.includes('tls_identity_not_verified') || !target.accepted_risks.includes('broad_database_account')) fail('accepted runtime risks must be explicit and non-blocking');
 if (target.future_ddl_gate !== 'separate explicit authorization required') fail('future DDL must retain a separate authorization gate');
 
+const runtimeManifest = JSON.parse(fs.readFileSync(path.join(dir, '../ai-security-v1/references/telemetry/contract-manifest.json'), 'utf8'));
+for (const [key, expected] of Object.entries({ mysql_server_version: '8.0.26', foreign_key_count: 102, check_constraint_count: 104, general_ci_table_count: 36, utf8mb4_character_column_count: 227 })) {
+  if (runtimeManifest[key] !== expected) fail(`runtime preflight fingerprint mismatch: ${key}`);
+}
+const runtimeFiles = ['agent-adapter.cjs','cli.cjs','event-builder.cjs','mysql-writer.cjs','outbox.cjs','projection.cjs','redactor.cjs','schema-validator.cjs'];
+for (const file of runtimeFiles) if (!fs.existsSync(path.join(dir, '../ai-security-v1/scripts/telemetry', file))) fail(`missing telemetry runtime file: ${file}`);
+const remoteAcceptance = fs.readFileSync(path.join(dir, '../ai-security-v1/scripts/telemetry/tests/remote-lineage-acceptance.cjs'), 'utf8');
+if (!remoteAcceptance.includes('event_type_count') || !remoteAcceptance.includes('remote event matrix incomplete')) fail('remote acceptance does not enforce the complete event matrix');
+
 const alignment = cp.spawnSync(process.execPath, [alignmentVerifierPath], { encoding: 'utf8' });
 if (alignment.status !== 0) fail(`Skill/DB alignment verification failed: ${alignment.stderr || alignment.stdout}`);
 const alignmentResult = JSON.parse(alignment.stdout);
@@ -180,5 +192,5 @@ console.log(JSON.stringify({
   source_contracts: alignmentResult.source_contracts,
   ddl_sha256: sha256(ddl),
   ddl_body_sha256: declaredBodyHash,
-  target_runtime_validation: 'remote_schema_fingerprint_and_lineage_acceptance_pass_extended_matrix_pending'
+  target_runtime_validation: 'remote_schema_fingerprint_and_32_event_lineage_matrix_required'
 }, null, 2));

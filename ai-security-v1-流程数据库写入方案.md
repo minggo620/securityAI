@@ -526,10 +526,10 @@ P6 只冻结指标所需的原始事实和 as-of event。指标由后置、版�
 3. 已完成：脱敏器、ULID、canonical JSON、hash 和 idempotency 工具。
 4. 已完成：本地 Outbox、hash-chain、排他锁、尾部恢复、checkpoint 和 dead-letter。
 5. 已完成：`init-run`、`record-event`、`record-snapshot`、`flush-outbox`、`finalize-run` 五个接口及事务 Writer。
-6. 已完成：Recon/Hunter/Critic/Verifier 结构化 `_process` 契约和 Hunter 两检查点机制。
+6. 已完成：Recon/Hunter/Critic/Verifier结构化`_process`契约、`agent-adapter.cjs`自动规范化接入、稳定实体ID和Hunter两检查点机制。
 7. 已完成：P0–P6 Parent 记录点写入现有 Skill 指导流程。
-8. 已完成：36 表、527 字段、32 类事件的静态对齐校验。
-9. 已完成：原 65 项回归、Telemetry 单元测试、远程 P0、幂等重放及项目→模型→假设→攻击→验证→Finding 血缘验收。
+8. 已完成：36表、527字段、32类事件的静态对齐校验，并在运行时强制阶段、必需业务投影、因果先决、评分重算和Verifier独立性。
+9. 已完成：原65项回归、24项Telemetry测试、远程32/32事件矩阵、幂等重放、最终Skill哈希及项目→模型→假设→攻击→验证→Finding血缘验收。
 10. 后续强化：十二场景的批量故障矩阵、容量基线、保留清理任务和后台查询视图。
 
 `P` 表示由方案新增的机制来源，不再表示“尚未实现”。数据库仍是旁路投影；当前审计文件和独立验证结果保持权威。

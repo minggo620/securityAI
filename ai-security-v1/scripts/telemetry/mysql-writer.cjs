@@ -27,19 +27,28 @@ function mysqlArgs(options = {}) {
   const value = connection();
   const tlsMode = options.tlsMode || 'PREFERRED';
   if (!new Set(['PREFERRED', 'VERIFY_IDENTITY']).has(tlsMode)) throw new Error('AUTH_REQUIRED: invalid TLS mode');
-  return ['--host', value.host, '--port', String(value.port), '--user', value.user, '--database', value.database, `--ssl-mode=${tlsMode}`, '--default-character-set=utf8mb4', '--batch', '--raw', '--skip-column-names'];
+  return ['--host', value.host, '--port', String(value.port), '--user', value.user, '--database', value.database, '--connect-timeout=10', `--ssl-mode=${tlsMode}`, '--default-character-set=utf8mb4', '--batch', '--raw', '--skip-column-names'];
+}
+
+function classifiedError(stderr) {
+  const text = String(stderr || '');
+  let code = 'PROJECTION_FAILED';
+  let retryable = false;
+  if (/CONCURRENCY_CONFLICT/.test(text)) code = 'CONCURRENCY_CONFLICT';
+  else if (/Access denied|using password:|authentication plugin/i.test(text)) code = 'AUTH_REQUIRED';
+  else if (/Can't connect|Lost connection|server has gone away|timed?\s*out|connection.*(?:refused|reset)|Unknown MySQL server host/i.test(text)) { code = 'DB_UNAVAILABLE'; retryable = true; }
+  else if (/doesn't exist|Unknown column|SCHEMA_INCOMPATIBLE/i.test(text)) code = 'SCHEMA_INCOMPATIBLE';
+  const error = new Error(`${code}: MySQL operation failed`);
+  error.code = code;
+  error.retryable = retryable;
+  return error;
 }
 
 function runMysql(sql, options = {}) {
   if (!process.env.MYSQL_PWD) throw new Error('AUTH_REQUIRED: MYSQL_PWD is not available to the trusted Writer');
-  const result = cp.spawnSync('mysql', mysqlArgs(options), { input: sql, encoding: 'utf8', env: process.env, maxBuffer: 8 * 1024 * 1024 });
-  if (result.error) throw new Error('DB_UNAVAILABLE: mysql client could not start');
-  if (result.status !== 0) {
-    const code = /CONCURRENCY_CONFLICT/.test(result.stderr || '') ? 'CONCURRENCY_CONFLICT' : 'PROJECTION_FAILED';
-    const error = new Error(`${code}: MySQL transaction failed`);
-    error.code = code;
-    throw error;
-  }
+  const result = cp.spawnSync('mysql', mysqlArgs(options), { input: sql, encoding: 'utf8', env: process.env, maxBuffer: 8 * 1024 * 1024, timeout: options.timeoutMs || 30000, killSignal: 'SIGTERM' });
+  if (result.error) { const error = new Error(result.error.code === 'ETIMEDOUT' ? 'DB_UNAVAILABLE: mysql client timed out' : 'DB_UNAVAILABLE: mysql client could not start'); error.code = 'DB_UNAVAILABLE'; error.retryable = true; throw error; }
+  if (result.status !== 0) throw classifiedError(result.stderr);
   return result.stdout || '';
 }
 
@@ -51,6 +60,7 @@ function quoteStrict(value, pattern, name) {
 function preflight(options = {}) {
   const database = runMysql('SELECT DATABASE(); SELECT VERSION(); SHOW STATUS LIKE \'Ssl_cipher\';', options).trim().split('\n');
   if (database[0] !== 'ai_security') throw new Error('SCHEMA_INCOMPATIBLE: Writer is not connected to ai_security');
+  if (!(database[1] || '').startsWith(contractManifest.mysql_server_version)) throw new Error(`SCHEMA_INCOMPATIBLE: expected MySQL ${contractManifest.mysql_server_version}`);
   const rows = runMysql("SELECT TABLE_NAME,COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME LIKE 'audit\\_%' ESCAPE '\\\\' ORDER BY TABLE_NAME,ORDINAL_POSITION;", options).trim().split('\n').filter(Boolean);
   const columns = new Map();
   for (const row of rows) {
@@ -63,6 +73,9 @@ function preflight(options = {}) {
   for (const [table, names] of [...columns.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) for (const column of [...names].sort()) columnLines.push(`${table}.${column}`);
   const columnHash = crypto.createHash('sha256').update(`${columnLines.join('\n')}\n`).digest('hex');
   if (columnLines.length !== contractManifest.database_column_count || columnHash !== contractManifest.database_columns_sha256) throw new Error('SCHEMA_INCOMPATIBLE: remote columns differ from the pinned database contract');
+  const counts = runMysql("SELECT COUNT(*) FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA=DATABASE(); SELECT COUNT(*) FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS WHERE CONSTRAINT_SCHEMA=DATABASE(); SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME LIKE 'audit\\_%' ESCAPE '\\\\' AND TABLE_COLLATION='utf8mb4_general_ci'; SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME LIKE 'audit\\_%' ESCAPE '\\\\' AND CHARACTER_SET_NAME='utf8mb4';", options).trim().split('\n').map(Number);
+  const expected = [contractManifest.foreign_key_count, contractManifest.check_constraint_count, contractManifest.general_ci_table_count, contractManifest.utf8mb4_character_column_count];
+  if (counts.length !== expected.length || counts.some((value, index) => value !== expected[index])) throw new Error(`SCHEMA_INCOMPATIBLE: remote constraints or collation fingerprint differs (${counts.join('/')})`);
   return { columns, server_version: database[1] || null, ssl_cipher: database.find((line) => line.startsWith('Ssl_cipher\t'))?.split('\t')[1] || null };
 }
 
@@ -92,4 +105,4 @@ function projectRecord(record, cachedPreflight, options = {}) {
   return { status: 'projected', event_id: record.envelope.event_id, ssl_cipher: state.ssl_cipher };
 }
 
-module.exports = { connection, mysqlArgs, preflight, projectRecord };
+module.exports = { classifiedError, connection, mysqlArgs, preflight, projectRecord, runMysql };

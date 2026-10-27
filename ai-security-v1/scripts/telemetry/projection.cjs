@@ -12,6 +12,49 @@ function eventRule(eventType) {
   return rule;
 }
 
+function phaseAllowed(expression, phaseCode) {
+  return expression.split('|').some((part) => {
+    const range = part.match(/^P([0-6])-P([0-6])$/);
+    if (range) {
+      const value = Number(phaseCode.slice(1));
+      return phaseCode.startsWith('P') && value >= Number(range[1]) && value <= Number(range[2]);
+    }
+    return part === phaseCode;
+  });
+}
+
+function validatePriorityScore(operation) {
+  if (operation.table !== 'audit_hypothesis_score' || operation.action !== 'insert') return;
+  const value = operation.values;
+  if (value.formula_name !== 'hypothesis-research-baseline' || value.formula_version !== '1.0') {
+    throw new Error('PROJECTION_FAILED: unsupported hypothesis priority formula');
+  }
+  if (value.validation_cost_unit !== 'normalized' || value.estimated_validation_cost < 0 || value.estimated_validation_cost > 1) {
+    throw new Error('PROJECTION_FAILED: baseline priority formula requires normalized validation cost in [0,1]');
+  }
+  const fields = ['predicted_probability', 'potential_impact', 'coverage_value', 'information_gain'];
+  for (const field of fields) if (typeof value[field] !== 'number' || value[field] < 0 || value[field] > 1) throw new Error(`PROJECTION_FAILED: ${field} must be in [0,1]`);
+  const expected = (value.predicted_probability * value.potential_impact + value.coverage_value + value.information_gain) / (1 + value.estimated_validation_cost);
+  if (typeof value.priority_score !== 'number' || Math.abs(value.priority_score - expected) > 0.000001) {
+    throw new Error(`PROJECTION_FAILED: priority_score does not match baseline formula (expected ${expected.toFixed(6)})`);
+  }
+}
+
+function validateIndependence(event, operations) {
+  if (event.event_type !== 'validation.started') return;
+  const content = rawContent(event);
+  const proof = content.independence;
+  if (!proof || typeof proof !== 'object' || !proof.verifier_task_id || !Array.isArray(proof.prohibited_task_ids) || !proof.checked_at) {
+    throw new Error('PROJECTION_FAILED: validation.started requires an independence proof');
+  }
+  if (proof.prohibited_task_ids.includes(proof.verifier_task_id)) throw new Error('PROJECTION_FAILED: verifier task is not independent');
+  const validation = operations.find((operation) => operation.table === 'audit_validation');
+  if (!validation || validation.values.verifier_task_id !== proof.verifier_task_id || validation.values.independence_status !== 'passed') {
+    throw new Error('PROJECTION_FAILED: validation row does not match independence proof');
+  }
+  if (!Number.isFinite(Date.parse(proof.checked_at))) throw new Error('PROJECTION_FAILED: invalid independence check timestamp');
+}
+
 function rawContent(event) {
   return event.payload && event.payload.content && typeof event.payload.content === 'object' ? event.payload.content : {};
 }
@@ -49,6 +92,7 @@ function operationsFor(event) {
   const content = rawContent(event);
   const provided = Array.isArray(content.projections) ? content.projections : [];
   const rule = eventRule(event.event_type);
+  if (!phaseAllowed(rule.phase, event.phase_code)) throw new Error(`PROJECTION_FAILED: ${event.event_type} is not allowed in ${event.phase_code}`);
   const allowed = new Set(rule.tables);
   const context = {
     run_id: event.run_id,
@@ -66,9 +110,26 @@ function operationsFor(event) {
     const values = Object.fromEntries(Object.entries(operation.values).map(([column, value]) => [validateIdentifier(column), normalizeValue(value, context)]));
     const where = operation.where ? Object.fromEntries(Object.entries(operation.where).map(([column, value]) => [validateIdentifier(column), normalizeValue(value, context)])) : null;
     if (operation.action === 'update' && (!where || !Object.keys(where).length)) throw new Error('PROJECTION_FAILED: update requires where');
-    return { table, action: operation.action, values, where };
+    const normalized = { table, action: operation.action, values, where };
+    validatePriorityScore(normalized);
+    return normalized;
   });
+  const present = new Set(operations.map((operation) => operation.table));
+  const missing = (rule.required_tables || []).filter((table) => !present.has(table));
+  if (missing.length) throw new Error(`PROJECTION_FAILED: ${event.event_type} is missing required projection(s): ${missing.join(',')}`);
+  validateIndependence(event, operations);
   return { operations, context, rule };
+}
+
+function validateEventAgainstHistory(event, records) {
+  const rule = eventRule(event.event_type);
+  const required = rule.requires_prior_event || [];
+  if (!required.length) return;
+  if (!event.causation_id) throw new Error(`PROJECTION_FAILED: ${event.event_type} requires causation_id`);
+  const cause = records.find((record) => record.envelope.event_id === event.causation_id && record.envelope.run_id === event.run_id);
+  if (!cause) throw new Error(`PROJECTION_FAILED: ${event.event_type} causation event is absent from the run Outbox`);
+  if (!required.includes(cause.envelope.event_type)) throw new Error(`PROJECTION_FAILED: ${event.event_type} must follow ${required.join(' or ')}`);
+  if (Date.parse(cause.envelope.occurred_at) > Date.parse(event.occurred_at)) throw new Error('PROJECTION_FAILED: causal event occurs after dependent event');
 }
 
 function bindValue(value) {
@@ -178,4 +239,4 @@ function transactionSql(record, columns) {
   return ['START TRANSACTION;', ...sequence.map((operation, index) => operationSql(operation, columns, index)), 'COMMIT;'].join('\n');
 }
 
-module.exports = { bindValue, eventRule, operationSql, operationsFor, transactionSql };
+module.exports = { bindValue, eventRule, operationSql, operationsFor, phaseAllowed, transactionSql, validateEventAgainstHistory };

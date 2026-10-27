@@ -9,14 +9,15 @@ const { ulid } = require('./ulid.cjs');
 const { canonicalJson } = require('./canonical-json.cjs');
 const { buildEvent, sha256 } = require('./event-builder.cjs');
 const outbox = require('./outbox.cjs');
-const { operationsFor } = require('./projection.cjs');
+const { operationsFor, validateEventAgainstHistory } = require('./projection.cjs');
+const { adaptAgentResult } = require('./agent-adapter.cjs');
 const writer = require('./mysql-writer.cjs');
 
 function response(value) { process.stdout.write(`${JSON.stringify(value)}\n`); }
 function fail(error) {
   const message = error instanceof Error ? error.message : String(error);
   const code = message.match(/^([A-Z_]+):/)?.[1] || 'TELEMETRY_ERROR';
-  response({ ok: false, event_id: null, status: 'failed', error: { code, retryable: new Set(['DB_UNAVAILABLE', 'PROJECTION_FAILED']).has(code) } });
+  response({ ok: false, event_id: null, status: 'failed', error: { code, retryable: code === 'DB_UNAVAILABLE' } });
   process.exitCode = 1;
 }
 
@@ -48,7 +49,18 @@ function mysqlDate(date = new Date()) { return date.toISOString().replace('T', '
 
 function skillManifestHash() {
   const root = path.resolve(__dirname, '../..');
-  const files = ['SKILL.md', 'RECONNAISSANCE.md', 'HUNTING.md', 'VALIDATION-AND-REPORTING.md', 'TELEMETRY.md', 'report-schema.json'];
+  const files = [];
+  const visit = (directory, relative = '') => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      const childRelative = path.join(relative, entry.name);
+      const child = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === 'tests') continue;
+        visit(child, childRelative);
+      } else if (entry.isFile() && /\.(?:md|json|ya?ml|cjs)$/.test(entry.name) && !entry.name.endsWith('.test.cjs')) files.push(childRelative);
+    }
+  };
+  visit(root);
   const hash = crypto.createHash('sha256');
   for (const file of files) {
     const target = path.join(root, file);
@@ -75,16 +87,26 @@ function runtimeConfig(args, outputDir) {
 function appendBuilt(outputDir, config, built) {
   if (config.mode === 'off') return { ok: true, event_id: built.event.event_id, status: 'disabled', error: null };
   operationsFor(built.event);
+  const outboxFile = outbox.resolveInside(outputDir, config.outbox_relative_path);
+  const history = outbox.readLines(outboxFile, true).records;
+  validateEventAgainstHistory(built.event, history);
   const appended = outbox.append(outputDir, config.outbox_relative_path, built);
-  if (config.mode !== 'remote') return { ok: true, event_id: built.event.event_id, status: 'appended', error: null, sequence: appended.record.sequence };
+  if (config.mode !== 'remote') return { ok: true, event_id: appended.record.envelope.event_id, status: appended.appended ? 'appended' : 'already_applied', error: null, sequence: appended.record.sequence };
   try {
-    const result = writer.projectRecord(appended.record, null, { tlsMode: config.remote_sync.tls_mode });
-    outbox.writeCheckpoint(outputDir, { sequence: appended.record.sequence, record_sha256: appended.record.record_sha256, event_id: built.event.event_id, committed_at: new Date().toISOString() });
-    return { ok: true, event_id: built.event.event_id, status: result.status, error: null, sequence: appended.record.sequence };
+    const records = outbox.readLines(outboxFile, true).records;
+    const checkpoint = outbox.validateCheckpoint(records, outbox.readCheckpoint(outputDir));
+    const state = writer.preflight({ tlsMode: config.remote_sync.tls_mode });
+    let result = { status: appended.appended ? 'projected' : 'already_applied' };
+    for (const record of records.filter((item) => item.sequence > checkpoint.sequence && item.sequence <= appended.record.sequence)) {
+      result = writer.projectRecord(record, state, { tlsMode: config.remote_sync.tls_mode });
+      outbox.writeCheckpoint(outputDir, { sequence: record.sequence, record_sha256: record.record_sha256, event_id: record.envelope.event_id, committed_at: new Date().toISOString() });
+    }
+    return { ok: true, event_id: appended.record.envelope.event_id, status: result.status, error: null, sequence: appended.record.sequence };
   } catch (error) {
-    if (error.code === 'IDEMPOTENCY_CONFLICT' || /^IDEMPOTENCY_CONFLICT:/.test(error.message)) outbox.deadLetter(outputDir, appended.record, 'IDEMPOTENCY_CONFLICT');
+    const code = error.code || error.message.match(/^([A-Z_]+):/)?.[1] || 'DB_UNAVAILABLE';
+    if (error.retryable === false || new Set(['IDEMPOTENCY_CONFLICT', 'PROJECTION_FAILED', 'SCHEMA_INCOMPATIBLE', 'AUTH_REQUIRED', 'CONCURRENCY_CONFLICT']).has(code)) outbox.deadLetter(outputDir, appended.record, code);
     if (config.failure_policy === 'required') throw error;
-    return { ok: true, event_id: built.event.event_id, status: 'pending_sync', error: { code: error.message.match(/^([A-Z_]+):/)?.[1] || 'DB_UNAVAILABLE', retryable: true }, sequence: appended.record.sequence };
+    return { ok: true, event_id: appended.record.envelope.event_id, status: 'pending_sync', error: { code, retryable: error.retryable === true }, sequence: appended.record.sequence };
   }
 }
 
@@ -134,10 +156,12 @@ function initRun(args) {
   for (const [index, scope] of (input.scope_paths || []).entries()) projections.push({ table: 'audit_run_scope', action: 'insert', values: { scope_id: ulid(), run_id: runId, ordinal: index + 1, scope_type: scope.scope_type || 'path', scope_value: scope.scope_value || scope.path || String(scope), included: scope.included !== false, reason: scope.reason || null, schema_version: '1.4.0', source_class: scope.source_class || 'S' } });
   const built = buildEvent({
     run_id: runId, phase_code: 'P0', event_type: 'run.initialized', actor_type: 'parent', source_class: 'P', payload_type: 'run.initialized',
-    idempotency_key: requestKey ? `request/${requestKey}/P0/init` : `run/${runId}/P0/init`,
+    idempotency_key: requestKey ? `request/${requestKey}/P0/init` : `run/${runId}/P0/init`, request_sha256: sha256(canonicalJson({ command: 'init-run', input, config })),
     payload: { _telemetry: { phase_execution_id: phaseId }, run_metadata: input, telemetry_config: config, projections }, source_refs: [{ relative_path: 'SKILL.md', start_line: null, end_line: null, content_sha256: null }]
   }, config);
-  response({ run_id: runId, phase_execution_id: phaseId, ...appendBuilt(outputDir, config, built) });
+  const result = appendBuilt(outputDir, config, built);
+  const record = outbox.findByIdempotency(outbox.readLines(outbox.resolveInside(outputDir, config.outbox_relative_path), true).records, null, built.event.idempotency_key);
+  response({ run_id: record?.envelope.run_id || runId, phase_execution_id: record?.envelope.payload?.content?._telemetry?.phase_execution_id || phaseId, ...result });
 }
 
 function recordEvent(args) {
@@ -145,8 +169,12 @@ function recordEvent(args) {
   const config = runtimeConfig(args, outputDir);
   const input = readInput(args);
   if (config.mode === 'off') return response({ ok: true, event_id: null, status: 'disabled', error: null });
-  const built = buildEvent(input, config);
-  response(appendBuilt(outputDir, config, built));
+  if (input.agent_result) {
+    const adapted = adaptAgentResult(input);
+    const results = adapted.events.map((eventInput) => appendBuilt(outputDir, config, buildEvent(eventInput, config)));
+    return response({ ok: true, event_id: results.at(-1)?.event_id || null, event_ids: results.map((item) => item.event_id), entities: adapted.entities, status: results.some((item) => item.status === 'pending_sync') ? 'pending_sync' : results.every((item) => item.status === 'already_applied') ? 'already_applied' : 'appended', error: null });
+  }
+  response(appendBuilt(outputDir, config, buildEvent(input, config)));
 }
 
 function recordSnapshot(args) {
@@ -168,6 +196,7 @@ function recordSnapshot(args) {
     source_class: input.source_class || 'O',
     payload_type: input.artifact_kind,
     idempotency_key: input.idempotency_key || `run/${input.run_id}/${input.phase_code}/artifact/${input.artifact_kind}/${input.version_no || 1}/${contentHash}`,
+    request_sha256: sha256(canonicalJson({ command: 'record-snapshot', input, content_sha256: contentHash })),
     payload: {
       _telemetry: { phase_execution_id: input.phase_execution_id || null },
       artifact: { relative_path: input.relative_path, content_sha256: contentHash, byte_size: bytes.length },
@@ -198,7 +227,8 @@ function flushOutbox(args) {
         outbox.writeCheckpoint(outputDir, { sequence: record.sequence, record_sha256: record.record_sha256, event_id: record.envelope.event_id, committed_at: new Date().toISOString() });
         applied += 1;
       } catch (error) {
-        if (/^IDEMPOTENCY_CONFLICT:/.test(error.message)) outbox.deadLetter(outputDir, record, 'IDEMPOTENCY_CONFLICT');
+        const code = error.code || error.message.match(/^([A-Z_]+):/)?.[1] || 'DB_UNAVAILABLE';
+        if (error.retryable === false || new Set(['IDEMPOTENCY_CONFLICT', 'PROJECTION_FAILED', 'SCHEMA_INCOMPATIBLE', 'AUTH_REQUIRED', 'CONCURRENCY_CONFLICT']).has(code)) outbox.deadLetter(outputDir, record, code);
         throw error;
       }
     }
@@ -223,7 +253,7 @@ function finalizeRun(args) {
     row_version: (input.expected_row_version || 0) + 1
   }, where: { run_id: input.run_id, row_version: input.expected_row_version || 0 } }];
   if (input.phase_execution_id) projections.push({ table: 'audit_phase_execution', action: 'update', values: { status: input.run_status === 'complete' ? 'completed' : 'incomplete', ended_at: mysqlDate() }, where: { phase_execution_id: input.phase_execution_id } });
-  const built = buildEvent({ run_id: input.run_id, phase_code: 'P6', event_type: 'run.finalized', actor_type: 'parent', source_class: 'P', payload_type: 'run.finalized', idempotency_key: input.idempotency_key || `run/${input.run_id}/P6/final/${input.run_status}`, payload: { _telemetry: { phase_execution_id: input.phase_execution_id || null }, final_status: input, projections }, source_refs: [] }, config);
+  const built = buildEvent({ run_id: input.run_id, phase_code: 'P6', event_type: 'run.finalized', actor_type: 'parent', source_class: 'P', payload_type: 'run.finalized', idempotency_key: input.idempotency_key || `run/${input.run_id}/P6/final/${input.run_status}`, request_sha256: sha256(canonicalJson({ command: 'finalize-run', input })), payload: { _telemetry: { phase_execution_id: input.phase_execution_id || null }, final_status: input, projections }, source_refs: [] }, config);
   response(appendBuilt(outputDir, config, built));
 }
 

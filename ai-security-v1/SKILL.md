@@ -170,7 +170,7 @@ For each confirmed finding, identify the invariant the code must enforce and the
 
 ## Full audit workflow
 
-In full audit mode, first read [TELEMETRY.md](TELEMETRY.md), then follow Phase 0 and all six audit phases in order. Telemetry events are recorded only after the Parent validates the source result and its ownership. Under `best_effort`, a telemetry failure never changes a valid core result.
+In full audit mode, first read [TELEMETRY.md](TELEMETRY.md), then follow Phase 0 and all six audit phases in order. Telemetry events are recorded only after the Parent validates the source result and its ownership. Every valid Recon/Hunter/Critic/Verifier result with `_process` must be submitted through the `record-event` Agent-result form so `agent-adapter.cjs` creates the normalized process records; retaining only an opaque Agent payload is incomplete telemetry. Under `best_effort`, a telemetry failure never changes a valid core result.
 
 0. **Run and telemetry initialization** — resolve mode, authorization, scope, budget, accepted risks, and Outbox capability; call `init-run` before launching any Agent.
 1. **Reconnaissance** — map the source, trust boundaries, local build paths, companion selections, prior evidence, and initial deterministic coverage ledger with [RECONNAISSANCE.md](RECONNAISSANCE.md); record `DB-P1-01` through `DB-P1-05`.
