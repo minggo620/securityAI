@@ -159,9 +159,35 @@ function initRun(args) {
     idempotency_key: requestKey ? `request/${requestKey}/P0/init` : `run/${runId}/P0/init`, request_sha256: sha256(canonicalJson({ command: 'init-run', input, config })),
     payload: { _telemetry: { phase_execution_id: phaseId }, run_metadata: input, telemetry_config: config, projections }, source_refs: [{ relative_path: 'SKILL.md', start_line: null, end_line: null, content_sha256: null }]
   }, config);
-  const result = appendBuilt(outputDir, config, built);
+  const initialized = appendBuilt(outputDir, config, built);
+  if (config.mode !== 'off') {
+    const initialRecord = outbox.findByIdempotency(outbox.readLines(outbox.resolveInside(outputDir, config.outbox_relative_path), true).records, null, built.event.idempotency_key);
+    const effectiveRunId = initialRecord?.envelope.run_id || runId;
+    const effectivePhaseId = initialRecord?.envelope.payload?.content?._telemetry?.phase_execution_id || phaseId;
+    const preflight = buildEvent({
+      run_id: effectiveRunId,
+      phase_code: 'P0',
+      event_type: 'run.preflight_completed',
+      actor_type: 'writer',
+      causation_id: built.event.event_id,
+      source_class: 'P',
+      payload_type: 'run.preflight',
+      idempotency_key: `run/${effectiveRunId}/P0/preflight`,
+      request_sha256: sha256(canonicalJson({ command: 'run.preflight_completed', run_id: effectiveRunId, config })),
+      payload: {
+        _telemetry: { phase_execution_id: effectivePhaseId },
+        preflight: { status: initialized.status === 'projected' ? 'passed' : 'pending_sync', database: 'ai_security', schema_version: '1.3.0-core', table_count: 36, tls_mode: config.remote_sync.tls_mode },
+        projections: [{ table: 'audit_run', action: 'update', values: { run_status: 'in_progress', row_version: 1 }, where: { run_id: effectiveRunId, row_version: 0 } }]
+      },
+      source_refs: []
+    }, config);
+    const preflightResult = appendBuilt(outputDir, config, preflight);
+    const latest = outbox.findByIdempotency(outbox.readLines(outbox.resolveInside(outputDir, config.outbox_relative_path), true).records, null, preflight.event.idempotency_key);
+    response({ run_id: latest?.envelope.run_id || effectiveRunId, phase_execution_id: latest?.envelope.payload?.content?._telemetry?.phase_execution_id || effectivePhaseId, init_event_id: built.event.event_id, ...preflightResult });
+    return;
+  }
   const record = outbox.findByIdempotency(outbox.readLines(outbox.resolveInside(outputDir, config.outbox_relative_path), true).records, null, built.event.idempotency_key);
-  response({ run_id: record?.envelope.run_id || runId, phase_execution_id: record?.envelope.payload?.content?._telemetry?.phase_execution_id || phaseId, ...result });
+  response({ run_id: record?.envelope.run_id || runId, phase_execution_id: record?.envelope.payload?.content?._telemetry?.phase_execution_id || phaseId, ...initialized });
 }
 
 function recordEvent(args) {
@@ -210,9 +236,7 @@ function recordSnapshot(args) {
   response(appendBuilt(outputDir, config, buildEvent(eventInput, config)));
 }
 
-function flushOutbox(args) {
-  const outputDir = path.resolve(args.output_dir || '.');
-  const config = runtimeConfig(args, outputDir);
+function syncOutbox(outputDir, config) {
   if (config.mode !== 'remote' || !config.remote_sync.enabled || !config.consent.remote_mysql) throw new Error('AUTH_REQUIRED: remote flush requires remote mode and consent');
   const result = outbox.withLock(outputDir, () => {
     const file = outbox.resolveInside(outputDir, config.outbox_relative_path);
@@ -234,6 +258,13 @@ function flushOutbox(args) {
     }
     return { ok: true, event_id: null, status: 'synced', error: null, applied, total: records.length, ssl_cipher: state.ssl_cipher };
   });
+  return result;
+}
+
+function flushOutbox(args) {
+  const outputDir = path.resolve(args.output_dir || '.');
+  const config = runtimeConfig(args, outputDir);
+  const result = syncOutbox(outputDir, config);
   response(result);
 }
 
@@ -242,11 +273,21 @@ function finalizeRun(args) {
   const config = runtimeConfig(args, outputDir);
   const input = readInput(args);
   if (config.mode === 'off') return response({ ok: true, event_id: null, status: 'disabled', error: null });
+  let preFinalizeSync = null;
+  if (config.mode === 'remote') {
+    try {
+      preFinalizeSync = syncOutbox(outputDir, config);
+    } catch (error) {
+      const code = error.code || error.message.match(/^([A-Z_]+):/)?.[1] || 'DB_UNAVAILABLE';
+      if (config.failure_policy === 'required') throw error;
+      preFinalizeSync = { status: 'pending_sync', error: { code, retryable: error.retryable === true } };
+    }
+  }
   const projections = [{ table: 'audit_run', action: 'update', values: {
     run_status: input.run_status,
     telemetry_local_status: input.telemetry_local_status || 'healthy',
-    telemetry_remote_status: input.telemetry_remote_status || (config.mode === 'remote' ? 'pending_sync' : 'disabled'),
-    outbox_status: input.outbox_status || (config.mode === 'remote' ? 'pending' : 'pending'),
+    telemetry_remote_status: input.telemetry_remote_status || (config.mode === 'remote' ? (preFinalizeSync?.status === 'synced' ? 'synced' : 'pending_sync') : 'disabled'),
+    outbox_status: input.outbox_status || (config.mode === 'remote' ? (preFinalizeSync?.status === 'synced' ? 'empty' : 'pending') : 'pending'),
     incomplete_reason: input.incomplete_reason || null,
     telemetry_incomplete_reason: input.telemetry_incomplete_reason || null,
     ended_at: mysqlDate(),

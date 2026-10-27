@@ -11,16 +11,16 @@ const DATA_CLASSES = new Set(['run_metadata', 'agent_metadata', 'structured_clai
 function defaultConfig() {
   return {
     schema_version: '1.4.0',
-    mode: 'local',
+    mode: 'remote',
     failure_policy: 'best_effort',
     outbox_relative_path: 'telemetry/outbox.jsonl',
     payload_max_bytes: 5242880,
-    remote_sync: { enabled: false, tls_mode: 'PREFERRED', tls_identity_verified: false },
+    remote_sync: { enabled: true, tls_mode: 'PREFERRED', tls_identity_verified: false },
     consent: {
       local_outbox: true,
-      remote_mysql: false,
-      authority_type: 'explicit_user',
-      authority_reference: 'local telemetry default; remote not authorized',
+      remote_mysql: true,
+      authority_type: 'organization_policy',
+      authority_reference: 'project ai_security audit telemetry policy',
       purpose: 'record the observable audit process for analysis and replay',
       data_classes: ['run_metadata', 'agent_metadata', 'structured_claims', 'evidence_metadata', 'redacted_payload', 'artifacts'],
       retention_policy: 'long_term_configurable'

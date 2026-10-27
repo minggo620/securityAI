@@ -52,4 +52,4 @@ ddl_body_sha256 = 6e9c0af3b51be034a802a9aa547182b181a7adf326265a4be7730452c15d7f
 - `MYSQL_PWD`只在可信Parent启动的Writer环境中存在。
 - 相同幂等键不得对应不同请求哈希；重复请求必须返回既有事件，远程数据库仍以envelope hash确认相同效果。
 
-数据库和Outbox故障不能改变审计Verdict。完整审计默认local/best-effort；remote是获授权后的同步模式。
+数据库和Outbox故障不能改变审计Verdict。完整审计默认remote/best-effort；事件先写本地Outbox，再投影到远程数据库；数据库暂时不可用时以pending_sync继续并在恢复后补传。

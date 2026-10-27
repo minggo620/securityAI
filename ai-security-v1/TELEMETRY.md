@@ -14,14 +14,26 @@ The configured account has broader privileges than a least-privilege Writer and 
 ## Modes
 
 - `off`: no telemetry directory, Outbox, `_process` requirement, or database connection.
-- `local`: the full-audit default. Append validated, redacted events to the local Outbox; do not connect to MySQL.
-- `remote`: requires active `remote_mysql` consent for this run or an auditable organization policy. Append locally first, then project to `ai_security`.
+- `local`: an explicit local-only override. Append validated, redacted events to the local Outbox and do not connect to MySQL.
+- `remote`: the full-audit default. Append locally first, then immediately project to `ai_security.audit_*`; the project's standing `remote_mysql` organization policy supplies consent.
 
 `best_effort` is the default failure policy. A telemetry failure marks telemetry incomplete but never changes a valid audit verdict. Under `required`, an unwritable/corrupt local Outbox stops new Agent launches and makes the run incomplete. A temporarily unavailable MySQL database does not stop the audit when the Outbox remains sound.
 
 ## Trusted Parent interface
 
 Only the Parent invokes the CLI. Agents and target-controlled processes never see database credentials, the Outbox, checkpoint, dead-letter file, or another Agent's directory.
+
+For a complete audit, the Parent may use the stable wrapper (which maps one-to-one to the commands below):
+
+```sh
+node <skill-dir>/scripts/telemetry/audit-session.cjs init --output-dir <output-dir>
+node <skill-dir>/scripts/telemetry/audit-session.cjs event --output-dir <output-dir>
+node <skill-dir>/scripts/telemetry/audit-session.cjs snapshot --output-dir <output-dir>
+node <skill-dir>/scripts/telemetry/audit-session.cjs flush --output-dir <output-dir>
+node <skill-dir>/scripts/telemetry/audit-session.cjs finalize --output-dir <output-dir>
+```
+
+The wrapper does not bypass validation or construct SQL; it only makes the Parent lifecycle explicit. The default configuration used by `init` is remote. `local` and `off` are opt-in overrides supplied in the JSON input.
 
 ```sh
 node <skill-dir>/scripts/telemetry/cli.cjs init-run --output-dir <output-dir> [--config <config.json>]
@@ -55,12 +67,12 @@ Call `init-run` after resolving full-audit setup and before launching any Recon 
   "request_idempotency_key": "caller supplied retry identity",
   "telemetry": {
     "schema_version":"1.4.0",
-    "mode":"local",
+    "mode":"remote",
     "failure_policy":"best_effort",
     "outbox_relative_path":"telemetry/outbox.jsonl",
     "payload_max_bytes":5242880,
-    "remote_sync":{"enabled":false,"tls_mode":"PREFERRED","tls_identity_verified":false},
-    "consent":{"local_outbox":true,"remote_mysql":false,"authority_type":"explicit_user","authority_reference":"this audit request","purpose":"audit process analysis","data_classes":["run_metadata","agent_metadata","structured_claims","evidence_metadata","redacted_payload","artifacts"],"retention_policy":"long_term_configurable"},
+    "remote_sync":{"enabled":true,"tls_mode":"PREFERRED","tls_identity_verified":false},
+    "consent":{"local_outbox":true,"remote_mysql":true,"authority_type":"organization_policy","authority_reference":"project ai_security audit telemetry policy","purpose":"audit process analysis","data_classes":["run_metadata","agent_metadata","structured_claims","evidence_metadata","redacted_payload","artifacts"],"retention_policy":"long_term_configurable"},
     "accepted_risks":["tls_identity_not_verified","broad_database_account"]
   }
 }
@@ -118,7 +130,7 @@ Call `record-snapshot` only after the Parent has written the authoritative file 
 
 ### Flush and finalize
 
-`flush-outbox` is legal only in remote mode with active consent. The trusted Parent passes `AI_SECURITY_DB_HOST`, `AI_SECURITY_DB_PORT`, `AI_SECURITY_DB_USER`, and `AI_SECURITY_DB_NAME`; it supplies the password only in `MYSQL_PWD`. Never put any of them in arguments or retained files. The Writer rejects a database name other than `ai_security`. A checkpoint advances only after a MySQL commit and must match the exact Outbox chain record before replay resumes.
+`flush-outbox` is performed automatically at phase boundaries and before finalization in remote mode. The trusted Parent passes `AI_SECURITY_DB_HOST`, `AI_SECURITY_DB_PORT`, `AI_SECURITY_DB_USER`, and `AI_SECURITY_DB_NAME`; it supplies the password only in `MYSQL_PWD`. Never put any of them in arguments or retained files. The Writer rejects a database name other than `ai_security`. A checkpoint advances only after a MySQL commit and must match the exact Outbox chain record before replay resumes. A run with a healthy Outbox but unavailable MySQL remains auditable and is finalized as `pending_sync` until a later flush succeeds.
 
 `finalize-run` records run and telemetry statuses separately. `run_status=complete` may coexist with `telemetry_remote_status=pending_sync`; disclose that state in `REPORT.md`.
 

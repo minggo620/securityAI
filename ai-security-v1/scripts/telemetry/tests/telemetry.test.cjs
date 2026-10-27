@@ -26,12 +26,13 @@ test('ULIDs are valid and monotonic within a millisecond', () => {
   assert.ok(b > a);
 });
 
-test('default config is local best effort and remote requires consent', () => {
+test('default config is remote best effort with standing organization consent', () => {
   const config = validateConfig(defaultConfig());
-  assert.equal(config.mode, 'local');
+  assert.equal(config.mode, 'remote');
   assert.equal(config.failure_policy, 'best_effort');
-  assert.equal(config.remote_sync.enabled, false);
-  assert.throws(() => validateConfig({ ...config, mode: 'remote' }), /AUTH_REQUIRED/);
+  assert.equal(config.remote_sync.enabled, true);
+  assert.equal(config.consent.remote_mysql, true);
+  assert.equal(config.consent.authority_type, 'organization_policy');
 });
 
 test('process sidecar validates role-specific requirements', () => {
@@ -130,20 +131,21 @@ test('projection uses prepared statements and enforces row-version CAS', () => {
   assert.throws(() => operationSql({ table: 'audit_run', action: 'update', values: { run_status: 'complete' }, where: { run_id: ulid() } }, columns, 0), /row_version CAS/);
 });
 
-test('local CLI initializes a run without contacting MySQL', () => {
+test('default CLI initializes remote telemetry and preserves an event when MySQL is unavailable', () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'telemetry-cli-'));
   const input = { repo: 'synthetic', target: 'synthetic', source_ref: 'abc123', profile: 'quick', scope_paths: [] };
-  const result = cp.spawnSync(process.execPath, [path.join(__dirname, '../cli.cjs'), 'init-run', '--output-dir', directory], { input: JSON.stringify(input), encoding: 'utf8' });
+  const result = cp.spawnSync(process.execPath, [path.join(__dirname, '../cli.cjs'), 'init-run', '--output-dir', directory], { input: JSON.stringify(input), encoding: 'utf8', timeout: 5000, env: { ...process.env, AI_SECURITY_DB_HOST: '127.0.0.1', AI_SECURITY_DB_PORT: '1', AI_SECURITY_DB_USER: 'synthetic', AI_SECURITY_DB_NAME: 'ai_security', MYSQL_PWD: 'synthetic-not-a-real-password' } });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const output = JSON.parse(result.stdout);
-  assert.equal(output.status, 'appended');
-  assert.equal(outbox.readLines(path.join(directory, 'telemetry/outbox.jsonl')).records.length, 1);
+  assert.equal(output.status, 'pending_sync');
+  assert.equal(outbox.readLines(path.join(directory, 'telemetry/outbox.jsonl')).records.length, 2);
 });
 
 test('off mode preserves the original flow and creates no telemetry directory', () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'telemetry-cli-off-'));
   const telemetry = defaultConfig();
   telemetry.mode = 'off';
+  telemetry.remote_sync.enabled = false;
   telemetry.consent.local_outbox = false;
   const result = cp.spawnSync(process.execPath, [path.join(__dirname, '../cli.cjs'), 'init-run', '--output-dir', directory], {
     input: JSON.stringify({ repo: 'synthetic', target: 'synthetic', source_ref: 'abc123', profile: 'quick', telemetry }),
@@ -176,15 +178,31 @@ test('remote best-effort keeps a durable event when MySQL is unavailable', () =>
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   assert.equal(JSON.parse(result.stdout).status, 'pending_sync');
-  assert.equal(outbox.readLines(path.join(directory, 'telemetry/outbox.jsonl')).records.length, 1);
+  assert.equal(outbox.readLines(path.join(directory, 'telemetry/outbox.jsonl')).records.length, 2);
   assert.equal(fs.existsSync(path.join(directory, 'telemetry/checkpoint.json')), false);
+});
+
+test('default remote finalization retries sync and records pending status', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'telemetry-finalize-remote-'));
+  const cli = path.join(__dirname, '../cli.cjs');
+  const env = { ...process.env, AI_SECURITY_DB_HOST: '127.0.0.1', AI_SECURITY_DB_PORT: '1', AI_SECURITY_DB_USER: 'synthetic', AI_SECURITY_DB_NAME: 'ai_security', MYSQL_PWD: 'synthetic-not-a-real-password' };
+  const invoke = (command, input) => cp.spawnSync(process.execPath, [cli, command, '--output-dir', directory], { input: JSON.stringify(input), encoding: 'utf8', timeout: 5000, env });
+  const initialized = invoke('init-run', { repo: 'synthetic', target: 'synthetic', source_ref: 'abc', profile: 'quick' });
+  assert.equal(initialized.status, 0, initialized.stderr || initialized.stdout);
+  const init = JSON.parse(initialized.stdout);
+  const finalized = invoke('finalize-run', { run_id: init.run_id, run_status: 'complete', expected_row_version: 0 });
+  assert.equal(finalized.status, 0, finalized.stderr || finalized.stdout);
+  assert.equal(JSON.parse(finalized.stdout).status, 'pending_sync');
+  assert.equal(outbox.readLines(path.join(directory, 'telemetry/outbox.jsonl')).records.length, 3);
 });
 
 test('all five Parent CLI interfaces preserve a local append-only run', () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'telemetry-cli-interfaces-'));
   const cli = path.join(__dirname, '../cli.cjs');
   const invoke = (command, input) => cp.spawnSync(process.execPath, [cli, command, '--output-dir', directory], { input: JSON.stringify(input || {}), encoding: 'utf8' });
-  const initialized = invoke('init-run', { repo: 'synthetic', target: 'synthetic', source_ref: 'abc123', profile: 'quick', scope_paths: [] });
+  const base = defaultConfig();
+  const localTelemetry = { ...base, mode: 'local', remote_sync: { ...base.remote_sync, enabled: false }, consent: { ...base.consent, remote_mysql: false, authority_type: 'explicit_user', authority_reference: 'local-only test' } };
+  const initialized = invoke('init-run', { repo: 'synthetic', target: 'synthetic', source_ref: 'abc123', profile: 'quick', scope_paths: [], telemetry: localTelemetry });
   assert.equal(initialized.status, 0, initialized.stdout);
   const init = JSON.parse(initialized.stdout);
   const phaseExecutionId = ulid();
@@ -201,7 +219,7 @@ test('all five Parent CLI interfaces preserve a local append-only run', () => {
   const flush = invoke('flush-outbox', {});
   assert.notEqual(flush.status, 0);
   assert.equal(JSON.parse(flush.stdout).error.code, 'AUTH_REQUIRED');
-  assert.equal(outbox.readLines(path.join(directory, 'telemetry/outbox.jsonl')).records.length, 4);
+  assert.equal(outbox.readLines(path.join(directory, 'telemetry/outbox.jsonl')).records.length, 5);
 });
 
 test('event contract rejects missing business projections and wrong phases', () => {
@@ -277,19 +295,23 @@ test('oversized payload preserves projection controls', () => {
 test('init-run retry with request key creates one Outbox record', () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'telemetry-init-retry-'));
   const cli = path.join(__dirname, '../cli.cjs');
-  const input = { repo: 'synthetic', target: 'synthetic', source_ref: 'abc123', profile: 'quick', scope_paths: [], request_idempotency_key: 'stable-request-1' };
+  const base = defaultConfig();
+  const localTelemetry = { ...base, mode: 'local', remote_sync: { ...base.remote_sync, enabled: false }, consent: { ...base.consent, remote_mysql: false, authority_type: 'explicit_user', authority_reference: 'local-only test' } };
+  const input = { repo: 'synthetic', target: 'synthetic', source_ref: 'abc123', profile: 'quick', scope_paths: [], request_idempotency_key: 'stable-request-1', telemetry: localTelemetry };
   const one = cp.spawnSync(process.execPath, [cli, 'init-run', '--output-dir', directory], { input: JSON.stringify(input), encoding: 'utf8' });
   const two = cp.spawnSync(process.execPath, [cli, 'init-run', '--output-dir', directory], { input: JSON.stringify(input), encoding: 'utf8' });
   assert.equal(one.status, 0, one.stdout);
   assert.equal(two.status, 0, two.stdout);
   assert.equal(JSON.parse(two.stdout).status, 'already_applied');
-  assert.equal(outbox.readLines(path.join(directory, 'telemetry/outbox.jsonl')).records.length, 1);
+  assert.equal(outbox.readLines(path.join(directory, 'telemetry/outbox.jsonl')).records.length, 2);
 });
 
 test('Recon agent result is automatically validated and projected', () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'telemetry-agent-adapter-'));
   const cli = path.join(__dirname, '../cli.cjs');
-  const initialized = cp.spawnSync(process.execPath, [cli, 'init-run', '--output-dir', directory], { input: JSON.stringify({ repo: 'synthetic', target: 'synthetic', source_ref: 'abc', profile: 'quick' }), encoding: 'utf8' });
+  const base = defaultConfig();
+  const localTelemetry = { ...base, mode: 'local', remote_sync: { ...base.remote_sync, enabled: false }, consent: { ...base.consent, remote_mysql: false, authority_type: 'explicit_user', authority_reference: 'local-only test' } };
+  const initialized = cp.spawnSync(process.execPath, [cli, 'init-run', '--output-dir', directory], { input: JSON.stringify({ repo: 'synthetic', target: 'synthetic', source_ref: 'abc', profile: 'quick', telemetry: localTelemetry }), encoding: 'utf8' });
   const init = JSON.parse(initialized.stdout);
   const input = { run_id: init.run_id, phase_code: 'P1', actor_type: 'recon', agent_task_id: ulid(), idempotency_key: `run/${init.run_id}/P1/recon/r1`, context: { phase_execution_id: init.phase_execution_id, task_row_version: 0, accepted_fact_ids: ['fact-1'] }, agent_result: { summary: 'observable core result', _process: {
     schema_version: '1.4.0', result_type: 'recon', agent_id: 'recon-1', explicit_rationale: 'Direct source observation.', observations: [],
@@ -303,5 +325,5 @@ test('Recon agent result is automatically validated and projected', () => {
   assert.equal(JSON.parse(retry.stdout).status, 'already_applied');
   const records = outbox.readLines(path.join(directory, 'telemetry/outbox.jsonl')).records;
   assert.deepEqual(records.slice(-2).map((record) => record.envelope.event_type), ['recon.fact_recorded', 'agent.task_completed']);
-  assert.equal(records.length, 3);
+  assert.equal(records.length, 4);
 });

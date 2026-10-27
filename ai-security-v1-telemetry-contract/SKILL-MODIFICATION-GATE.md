@@ -31,7 +31,7 @@
 
 ### P0
 
-- full audit默认`local + best_effort`；remote需要本次明确授权或可审计组织策略。
+- full audit默认`remote + best_effort`；项目已配置的`ai_security`组织策略提供遥测授权。
 - 先建立并验证本地Outbox，再启动Agent。
 - run metadata分开保存审计、local telemetry、remote telemetry和Outbox状态。
 
@@ -70,7 +70,7 @@ Hunter observation
 
 修改后必须证明：
 
-1. telemetry off、local best-effort、remote best-effort不改变`coverage-ledger.json`、`findings.json`或两个校验器语义。
+1. telemetry off、local best-effort、remote best-effort不改变`coverage-ledger.json`、`findings.json`或两个校验器语义；完整审计默认使用remote。
 2. MySQL、Writer或同步失败不改变当前审计Verdict。
 3. best-effort Outbox故障继续P1–P6；required才停止启动新Agent。
 4. Agent和目标代码看不到数据库凭据、Outbox、其他Agent目录或retained artifacts。
@@ -86,6 +86,6 @@ Hunter observation
 - 36张核心表、527列或固定列指纹与数据库契约不一致。
 - JSON协议major版本不兼容。
 - 本地Outbox路径不安全、不可写或中间记录损坏，且failure policy为`required`。
-- remote模式缺少有效`remote_mysql`授权。
+- remote模式缺少项目级`remote_mysql`组织策略。
 - 幂等键相同但稳定请求哈希不同。
 - Writer试图访问allowlist外表、列、数据库或SQL类别。

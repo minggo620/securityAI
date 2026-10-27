@@ -18,9 +18,7 @@ for (const key of ['AI_SECURITY_DB_HOST', 'AI_SECURITY_DB_USER', 'AI_SECURITY_DB
 const outputDir = process.argv[2] ? path.resolve(process.argv[2]) : fs.mkdtempSync(path.join(os.tmpdir(), 'ai-security-v1-remote-acceptance-'));
 if (!fs.existsSync(path.join(outputDir, 'telemetry/config.json'))) {
   const telemetry = defaultConfig();
-  telemetry.mode = 'remote';
-  telemetry.remote_sync.enabled = true;
-  telemetry.consent.remote_mysql = true;
+  if (telemetry.mode !== 'remote' || !telemetry.remote_sync.enabled || !telemetry.consent.remote_mysql) throw new Error('remote acceptance requires the default remote telemetry policy');
   telemetry.consent.authority_reference = 'explicit user authorization for synthetic remote acceptance';
   const initialized = cp.spawnSync(process.execPath, [path.join(__dirname, '../cli.cjs'), 'init-run', '--output-dir', outputDir], {
     input: JSON.stringify({ repo: '__ai_security_v1_acceptance__', target: '__ai_security_v1_acceptance__', source_ref: 'synthetic', profile: 'quick', scope_paths: [{ path: 'synthetic/' }], telemetry }),
@@ -51,8 +49,6 @@ function record(input) {
   outbox.writeCheckpoint(outputDir, checkpoint);
   return { event_id: built.event.event_id, payload_id: built.event.payload.content._telemetry.payload_id, result };
 }
-
-record({ run_id: runId, phase_code: 'P0', event_type: 'run.preflight_completed', actor_type: 'writer', idempotency_key: `run/${runId}/P0/preflight`, payload_type: 'run.preflight', payload: { _telemetry: { phase_execution_id: initial.envelope.payload.content._telemetry.phase_execution_id }, projections: [{ table: 'audit_run', action: 'update', values: { run_status: 'in_progress', row_version: 1 }, where: { run_id: runId, row_version: 0 } }] }, source_refs: [] });
 
 const p1 = ulid();
 record({ run_id: runId, phase_code: 'P1', event_type: 'phase.started', actor_type: 'parent', idempotency_key: `run/${runId}/P1/start`, payload_type: 'phase.started', payload: { _telemetry: { phase_execution_id: p1 }, projections: [{ table: 'audit_phase_execution', action: 'insert', values: { phase_execution_id: p1, run_id: runId, phase_code: 'P1', attempt_no: 1, status: 'running', input_payload_id: '$payload_id', output_payload_id: null, failure_reason: null, started_at: mysqlDate(), ended_at: null, schema_version: '1.4.0', source_class: 'P' } }] }, source_refs: [] });

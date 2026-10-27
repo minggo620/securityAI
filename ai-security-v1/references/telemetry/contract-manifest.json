@@ -11,7 +11,7 @@
   "general_ci_table_count": 36,
   "utf8mb4_character_column_count": 227,
   "projection_event_count": 32,
-  "default_mode": "local",
+  "default_mode": "remote",
   "default_failure_policy": "best_effort",
   "database_is_replica": true,
   "views_required": false,
