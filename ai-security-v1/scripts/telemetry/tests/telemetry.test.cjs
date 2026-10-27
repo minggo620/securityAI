@@ -68,6 +68,12 @@ test('event schema rejects unsafe source references', () => {
   assert.throws(() => buildEvent({ run_id: runId, phase_code: 'P1', event_type: 'phase.started', actor_type: 'parent', idempotency_key: `run/${runId}/P1/start`, payload: {}, source_refs: [{ relative_path: '../secret' }] }, config), /INVALID_ENVELOPE/);
 });
 
+test('new events reject the historical writer actor', () => {
+  const config = defaultConfig();
+  const runId = ulid();
+  assert.throws(() => buildEvent({ run_id: runId, phase_code: 'P1', event_type: 'phase.started', actor_type: 'writer', idempotency_key: `run/${runId}/P1/writer`, payload: { projections: [{ table: 'audit_phase_execution', action: 'insert', values: { phase_execution_id: ulid(), run_id: '$run_id', phase_code: 'P1', attempt_no: 1, status: 'running', schema_version: '1.4.0', source_class: 'P' } }] }, source_refs: [] }, config), /writer actor is reserved/);
+});
+
 function sampleBuilt() {
   const config = defaultConfig();
   const runId = ulid();

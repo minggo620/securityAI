@@ -26,7 +26,7 @@ function ensureTelemetryDir(outputDir) {
 
 function withLock(outputDir, fn) {
   const directory = ensureTelemetryDir(outputDir);
-  const lockPath = path.join(directory, 'writer.lock');
+  const lockPath = path.join(directory, 'database.lock');
   let fd;
   try {
     fd = fs.openSync(lockPath, 'wx', 0o600);
@@ -45,7 +45,7 @@ function withLock(outputDir, fn) {
       if (stale) {
         fs.unlinkSync(lockPath);
         fd = fs.openSync(lockPath, 'wx', 0o600);
-      } else throw new Error('OUTBOX_UNWRITABLE: writer lock is held');
+      } else throw new Error('OUTBOX_UNWRITABLE: database lock is held');
     } else throw error;
   }
   try {

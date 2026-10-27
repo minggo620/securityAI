@@ -3,7 +3,7 @@
 ## 版本边界
 
 - 数据库结构：`1.3.0-core`，远程 `ai_security` 已部署36张核心表；本轮不执行DDL。
-- Telemetry协议：`1.4.0`，覆盖event envelope、配置、Agent `_process`、projection map和Writer接口。
+- Telemetry协议：`1.4.0`，覆盖event envelope、配置、Agent `_process`、projection map和database-client接口。
 - 两个版本独立演进。协议变化不自动要求数据库结构迁移，但所有投影字段必须通过对齐检查。
 
 ## 已满足的结构门禁
@@ -14,14 +14,14 @@
 4. `verify-contract.cjs`和`verify-skill-db-alignment.cjs`必须通过。
 5. 原有两个Skill校验器的65项测试必须继续通过。
 6. Skill内嵌的四份运行时schema/projection必须与外部契约逐字节一致。
-7. Writer预检必须匹配MySQL 8.0.26、36表、527列及固定列指纹、102个外键、104个CHECK、36张`utf8mb4_general_ci`表和227个utf8mb4字符列；只匹配表数不够。
+7. database-client预检必须匹配MySQL 8.0.26、36表、527列及固定列指纹、102个外键、104个CHECK、36张`utf8mb4_general_ci`表和227个utf8mb4字符列；只匹配表数不够。
 
 ## 用户接受、但不是安全通过的偏差
 
 以下项目被用户明确接受为第一版非阻断风险：
 
 - TLS连接不验证服务端身份，配置为`PREFERRED`并记录`tls_identity_not_verified`。
-- 当前账号权限高于最小权限Writer，记录`broad_database_account`；应用Writer仍严格禁止DELETE、DDL、权限语句、存储程序、动态表名和其他数据库。
+- 当前账号权限高于最小权限运行账号，记录`broad_database_account`；应用database-client仍严格禁止DELETE、DDL、权限语句、存储程序、动态表名和其他数据库。
 - 两个只读视图不创建。
 - `audit_schema_version` seed不补写。
 
@@ -71,7 +71,7 @@ Hunter observation
 修改后必须证明：
 
 1. telemetry off、local best-effort、remote best-effort不改变`coverage-ledger.json`、`findings.json`或两个校验器语义；完整审计默认使用remote。
-2. MySQL、Writer或同步失败不改变当前审计Verdict。
+2. MySQL、database-client或同步失败不改变当前审计Verdict。
 3. best-effort Outbox故障继续P1–P6；required才停止启动新Agent。
 4. Agent和目标代码看不到数据库凭据、Outbox、其他Agent目录或retained artifacts。
 5. 相同事件重放不产生第二个hypothesis version、attack execution或finding revision。
@@ -88,4 +88,4 @@ Hunter observation
 - 本地Outbox路径不安全、不可写或中间记录损坏，且failure policy为`required`。
 - remote模式缺少项目级`remote_mysql`组织策略。
 - 幂等键相同但稳定请求哈希不同。
-- Writer试图访问allowlist外表、列、数据库或SQL类别。
+- database-client试图访问allowlist外表、列、数据库或SQL类别。

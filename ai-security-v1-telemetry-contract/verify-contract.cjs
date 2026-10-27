@@ -171,8 +171,11 @@ const runtimeManifest = JSON.parse(fs.readFileSync(path.join(dir, '../ai-securit
 for (const [key, expected] of Object.entries({ mysql_server_version: '8.0.26', foreign_key_count: 102, check_constraint_count: 104, general_ci_table_count: 36, utf8mb4_character_column_count: 227 })) {
   if (runtimeManifest[key] !== expected) fail(`runtime preflight fingerprint mismatch: ${key}`);
 }
-const runtimeFiles = ['agent-adapter.cjs','cli.cjs','event-builder.cjs','mysql-writer.cjs','outbox.cjs','projection.cjs','redactor.cjs','schema-validator.cjs'];
+const runtimeFiles = ['agent-adapter.cjs','cli.cjs','database-client.cjs','event-builder.cjs','outbox.cjs','projection.cjs','redactor.cjs','schema-validator.cjs'];
 for (const file of runtimeFiles) if (!fs.existsSync(path.join(dir, '../ai-security-v1/scripts/telemetry', file))) fail(`missing telemetry runtime file: ${file}`);
+const cliSource = fs.readFileSync(path.join(dir, '../ai-security-v1/scripts/telemetry/cli.cjs'), 'utf8');
+if (!cliSource.includes("require('./database-client.cjs')") || cliSource.includes('mysql-writer.cjs') || !cliSource.includes('database.applyEvent')) fail('Parent record points must use the database-client directly');
+if (fs.existsSync(path.join(dir, '../ai-security-v1/scripts/telemetry/mysql-writer.cjs'))) fail('legacy mysql-writer runtime must not be present');
 const remoteAcceptance = fs.readFileSync(path.join(dir, '../ai-security-v1/scripts/telemetry/tests/remote-lineage-acceptance.cjs'), 'utf8');
 if (!remoteAcceptance.includes('event_type_count') || !remoteAcceptance.includes('remote event matrix incomplete')) fail('remote acceptance does not enforce the complete event matrix');
 

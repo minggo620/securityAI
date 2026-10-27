@@ -120,6 +120,7 @@ function validateEnvelope(value) {
   if (!EVENT_TYPE.test(value.event_type)) throw new Error('INVALID_ENVELOPE: invalid event_type');
   if (!projectionMap().events.some((entry) => entry.event_type === value.event_type)) throw new Error('INVALID_ENVELOPE: unknown event_type');
   if (!new Set(['parent', 'recon', 'hunter', 'critic', 'verifier', 'replacement_verifier', 'writer', 'system', 'human']).has(value.actor_type)) throw new Error('INVALID_ENVELOPE: invalid actor_type');
+  if (value.actor_type === 'writer') throw new Error('INVALID_ENVELOPE: writer actor is reserved for historical events');
   if (!new Set(['S', 'O', 'P', 'D']).has(value.source_class)) throw new Error('INVALID_ENVELOPE: invalid source_class');
   if (!/^[a-z0-9][a-z0-9._-]*$/.test(value.payload_type)) throw new Error('INVALID_ENVELOPE: invalid payload_type');
   if (!value.payload || typeof value.payload !== 'object' || Array.isArray(value.payload)) throw new Error('INVALID_ENVELOPE: payload must be an object');

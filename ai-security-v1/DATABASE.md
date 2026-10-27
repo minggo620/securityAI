@@ -1,8 +1,8 @@
 # Configured ai_security MySQL Database
 
-Read this file for direct database work and for the telemetry connection boundary. Direct database access remains a separate operating mode; full audits use the project's standing `ai_security` telemetry policy through the restricted Writer.
+Read this file for direct database work and for the telemetry connection boundary. Direct database access remains a separate operating mode; full audits use the project's standing `ai_security` telemetry policy through the trusted Parent database client.
 
-Exception for process telemetry: a full audit automatically synchronizes its local Outbox to the configured `ai_security.audit_*` tables under the project's standing `remote_mysql` organization policy. Read [TELEMETRY.md](TELEMETRY.md) first. The telemetry Writer is a sidecar and may not read database content back into a current audit verdict.
+Exception for process telemetry: a full audit writes each validated record point to the configured `ai_security.audit_*` tables under the project's standing `remote_mysql` organization policy, after durably appending it to the local Outbox. Read [TELEMETRY.md](TELEMETRY.md) first. The database is a replayable projection and may not feed database content back into a current audit verdict.
 
 ## Connection
 
@@ -26,13 +26,13 @@ MYSQL_PWD='Fuckin_2026!' mysql \
 
 Avoid printing environment variables or process details that could expose credentials. Connect only to the configured instance and database.
 
-## Telemetry Writer boundary
+## Telemetry database-client boundary
 
-The telemetry protocol is `1.4.0`; the deployed 36-table database schema remains `1.3.0-core`. The user accepted two non-blocking risks for this deployment: TLS server identity is not verified, and the configured account has broader privileges than a least-privilege Writer. Record those facts as `accepted_risk`; do not call them secure or compliant.
+The telemetry protocol is `1.4.0`; the deployed 36-table database schema remains `1.3.0-core`. The user accepted two non-blocking risks for this deployment: TLS server identity is not verified, and the configured account has broader privileges than a least-privilege runtime account. Record those facts as `accepted_risk`; do not call them secure or compliant.
 
-Despite the account's database privileges, `scripts/telemetry/mysql-writer.cjs` is restricted to the configured `ai_security` schema, the event/table allowlist, prepared inserts, compare-and-swap updates, idempotency reads, and transaction control. It must never issue `DELETE`, DDL, privilege statements, stored-program statements, dynamic table names, or access another database. Views and an `audit_schema_version` seed are not required by this Skill version.
+Despite the account's database privileges, `scripts/telemetry/database-client.cjs` is restricted to the configured `ai_security` schema, the event/table allowlist, prepared inserts, compare-and-swap updates, idempotency reads, and transaction control. It must never issue `DELETE`, DDL, privilege statements, stored-program statements, dynamic table names, or access another database. Views and an `audit_schema_version` seed are not required by this Skill version.
 
-The trusted Parent normally supplies `AI_SECURITY_DB_HOST`, `AI_SECURITY_DB_PORT`, `AI_SECURITY_DB_USER`, and `AI_SECURITY_DB_NAME`, and the password in `MYSQL_PWD` when invoking `flush-outbox` or a remote-mode event. When those variables are not present, the project Writer resolves the already configured connection profile in this file inside the trusted Writer process; it never places the password in arguments, events, reports, or Agent context. The Writer refuses any database name other than `ai_security`. Agents, target-controlled processes, prompts, Outbox records, payloads, reports, and command arguments must never receive these values. MySQL commit precedes local checkpoint advancement. A failed remote projection leaves the event pending in the Outbox and, under `best_effort`, cannot alter the audit verdict.
+The trusted Parent normally supplies `AI_SECURITY_DB_HOST`, `AI_SECURITY_DB_PORT`, `AI_SECURITY_DB_USER`, and `AI_SECURITY_DB_NAME`, and the password in `MYSQL_PWD` when invoking a remote-mode record point or `flush-outbox`. When those variables are not present, the database client resolves the already configured connection profile in this file inside the trusted Parent process; it never places the password in arguments, events, reports, or Agent context. The client refuses any database name other than `ai_security`. Agents, target-controlled processes, prompts, Outbox records, payloads, reports, and command arguments must never receive these values. MySQL commit precedes local checkpoint advancement. A failed remote projection leaves the event pending in the Outbox and, under `best_effort`, cannot alter the audit verdict.
 
 ## Workflow
 
@@ -46,7 +46,7 @@ The trusted Parent normally supplies `AI_SECURITY_DB_HOST`, `AI_SECURITY_DB_PORT
 
 ## Guardrails
 
-- Do not use telemetry Writer access for arbitrary queries. Full-audit process telemetry is the configured exception; live database inspection, export, and DML remain separately authorized operations.
+- Do not use the telemetry database client for arbitrary queries. Full-audit process telemetry is the configured exception; live database inspection, export, and DML remain separately authorized operations.
 - Do not use `--force`, disable foreign-key checks, broaden access, create users, grant privileges, change server configuration, or touch another database without a separate explicit request and approval.
 - Never run an unqualified `UPDATE` or `DELETE`. Require a reviewed `WHERE` clause and preview matching primary keys or a bounded representative sample.
 - Prefer parameterized application code for repeated or user-supplied values. For one-off client commands, quote identifiers and values carefully and never construct SQL directly from untrusted text.

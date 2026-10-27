@@ -7,7 +7,7 @@
 - 投影事件：32
 - 结论：所有来源契约均有完整脱敏快照能力；所有显式规范化目标均存在；所有数据库表均有生产来源和投影事件。
 
-> `event_projection` 表示该列由对应事件的 Parent/Writer 投影产生；它不是让 Agent 直接写数据库。完整原始结构始终先落 `audit_payload`，因此未规范化的 Skill 字段不会丢失。
+> `event_projection` 表示该列由对应事件的可信 Parent database-client 投影产生；它不是让 Agent 直接写数据库。完整原始结构始终先落 `audit_payload`，因此未规范化的 Skill 字段不会丢失。
 
 ## 来源契约覆盖
 

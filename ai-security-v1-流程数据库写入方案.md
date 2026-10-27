@@ -11,7 +11,7 @@
 
 ## 1. 目标与机制变化
 
-本方案已落地为 Skill 1.4.0 的可观察、可重放过程侧车：`ai-security-v1/TELEMETRY.md` 定义运行契约，`ai-security-v1/scripts/telemetry/` 实现本地 Outbox、五个 Parent 接口、幂等重放和 MySQL Writer。数据库仍只是文件/Agent结果的旁路投影，不是审计裁决源。
+本方案已落地为 Skill 1.4.0 的可观察、可重放过程侧车：`ai-security-v1/TELEMETRY.md` 定义运行契约，`ai-security-v1/scripts/telemetry/` 实现本地 Outbox、五个 Parent 接口、记录点直写、幂等重放和 MySQL database-client。数据库仍只是文件/Agent结果的旁路投影，不是审计裁决源。
 
 | 标记 | 含义 |
 | --- | --- |
@@ -35,7 +35,7 @@ Recon / Hunter / Critic / Verifier
 <output-dir>/telemetry-outbox.jsonl
         │ Parent 独占、append-only、目标代码不可见
         ▼
-可信 Writer
+可信 Parent database-client
         │ 事务 + 幂等 + 规范化投影
         ▼
 ai_security.audit_* tables
@@ -44,8 +44,8 @@ ai_security.audit_* tables
 ### 2.1 权限边界
 
 - Recon、Hunter、Critic、Verifier 和目标进程永不获得数据库连接信息。
-- Parent 负责接受或拒绝 Agent 输出；Writer 不解释自然语言，只接受已验证事件。
-- Writer 使用参数化 SQL，不拼接 Agent 文本。
+- Parent 负责接受或拒绝 Agent 输出；database-client 不解释自然语言，只接受已验证事件。
+- database-client 使用参数化 SQL，不拼接 Agent 文本。
 - 迁移账号与运行时账号分离；运行时账号只拥有 `audit_*` 的必要 DML 权限。
 - telemetry 不能作为审计目标的安全证据；数据库故障不能被误报为目标漏洞。
 
@@ -53,7 +53,7 @@ ai_security.audit_* tables
 
 - `full audit` 默认 `telemetry_mode=local`、`telemetry_failure_policy=best_effort`、remote status=`disabled`。
 - 连接或同步到 `ai_security` 属于 database mode，必须有用户针对本次运行的单独明示授权，或可审计的组织政策。
-- P0 在本地受保护的 telemetry 配置、run 初始化 payload 和不可变事件中记录授权来源、范围、数据类别、目的、保留政策和撤回状态；没有 active `remote_mysql` 授权时 Writer 必须拒绝远程连接。第一版不为授权单独建表。
+- P0 在本地受保护的 telemetry 配置、run 初始化 payload 和不可变事件中记录授权来源、范围、数据类别、目的、保留政策和撤回状态；没有 active `remote_mysql` 授权时 database-client 必须拒绝远程连接。第一版不为授权单独建表。
 - guidance 模式不自动创建 run、Outbox 或数据库记录。
 - 撤回远程授权后停止新的同步；已同步数据按授权时记录的保留/清理政策处理，不静默删除。
 
@@ -92,8 +92,8 @@ Outbox 位于 Parent 共享输出目录，固定命名 `telemetry/outbox.jsonl`�
 2. Parent 脱敏 payload；失败则生成 metadata-only payload。
 3. Parent 生成 ULID、幂等键、payload hash。
 4. Parent 以独占追加方式写 Outbox，并完成 `fsync`/等价持久化。
-5. Writer 开启 MySQL 事务。
-6. Writer按 `run_id + idempotency_hash` 查重。
+5. database-client 开启 MySQL 事务。
+6. database-client 按 `run_id + idempotency_hash` 查重。
 7. 未存在时插入 payload、event 和规范化投影；已存在时校验事件摘要相同。
 8. COMMIT 后写本地 ack/checkpoint；失败则 ROLLBACK，不确认 Outbox。
 9. 重放从最后已确认记录继续。
@@ -117,11 +117,11 @@ Outbox 位于 Parent 共享输出目录，固定命名 `telemetry/outbox.jsonl`�
 | checkpoint | file ID、record no、end offset、event ID、record hash、chain hash | 仅 MySQL COMMIT 成功后原子替换 |
 | dead-letter | envelope hash、稳定 error code、脱敏错误摘要、retry count、时间 | 不得复制未脱敏 envelope |
 
-写入采用进程内单 Writer 加排他锁，每条记录完整追加后 `fsync`。启动恢复时从 checkpoint 后顺序校验 length、record hash 和 hash-chain；文件尾部半行只能截断到上一个已验证边界并记录 `outbox.tail_recovered`，中间损坏则停止新 Agent。轮转只在已确认边界发生，新文件 header 引用上一文件的最终 chain hash。
+写入采用 Parent 进程内排他锁，每条记录完整追加后 `fsync`。启动恢复时从 checkpoint 后顺序校验 length、record hash 和 hash-chain；文件尾部半行只能截断到上一个已验证边界并记录 `outbox.tail_recovered`，中间损坏则停止新 Agent。轮转只在已确认边界发生，新文件 header 引用上一文件的最终 chain hash。
 
 checkpoint 和 dead-letter 只保存在 Parent 独占的本地 telemetry 目录。MySQL 通过 `audit_event(run_id,idempotency_hash,envelope_sha256)` 判断事件是否已提交；本地 checkpoint 丢失时允许从较早位置重放，相同事件不得新建业务版本。
 
-## 4. Writer 行为接口
+## 4. database-client 行为接口
 
 这些是第二版实现应提供的稳定行为接口，不限定 CLI、库函数或本地进程协议。
 
@@ -174,7 +174,7 @@ checkpoint 和 dead-letter 只保存在 Parent 独占的本地 telemetry 目录�
 
 `error` 非空时必须使用稳定错误码：`AUTH_REQUIRED`、`SCHEMA_INCOMPATIBLE`、`INVALID_ENVELOPE`、`REDACTION_BLOCKED`、`IDEMPOTENCY_CONFLICT`、`DEPENDENCY_MISSING`、`CONCURRENCY_CONFLICT`、`DB_UNAVAILABLE`、`OUTBOX_CORRUPT`、`OUTBOX_UNWRITABLE`、`PROJECTION_FAILED`、`DEAD_LETTERED`。错误仅包含脱敏摘要、可重试标志和 correlation ID，不返回 SQL、凭据或 payload 原文。
 
-实施时必须为五个行为接口及 event envelope 提供版本化 JSON Schema；Writer 只接受已知 major schema，未知字段按 schema 的 `additionalProperties` 政策处理，不猜测映射。
+实施时必须为五个行为接口及 event envelope 提供版本化 JSON Schema；database-client 只接受已知 major schema，未知字段按 schema 的 `additionalProperties` 政策处理，不猜测映射。
 
 ## 5. P0–P6 记录点总览
 
@@ -466,13 +466,13 @@ P6 只冻结指标所需的原始事实和 as-of event。指标由后置、版�
 
 ### 10.1 并发、租约与栅栏
 
-第一版同一 run 只允许一个 Parent 和一个本地 Writer，由 Parent 独占目录、排他锁、Writer PID/instance ID 和原子 checkpoint 保证，不建设数据库 lease/fencing。对 `audit_run`、task、coverage、hypothesis、candidate 和 finding 的更新仍使用 `WHERE row_version=?`；影响行数为 0 时返回 `CONCURRENCY_CONFLICT`，重读事件后决定重试，不盲目覆盖。只有出现多 Writer 高可用需求后才扩展数据库租约。
+第一版同一 run 只允许一个 Parent，由 Parent 独占目录、排他锁和原子 checkpoint 保证，不建设数据库 lease/fencing。对 `audit_run`、task、coverage、hypothesis、candidate 和 finding 的更新仍使用 `WHERE row_version=?`；影响行数为 0 时返回 `CONCURRENCY_CONFLICT`，重读事件后决定重试，不盲目覆盖。只有出现多 Parent 高可用需求后才扩展数据库租约。
 
 ### 10.2 Schema 演进
 
-采用 expand/contract：先添加可空列/新表并部署双读 Writer，再回填和校验，然后切换写入，最后在旧 Writer 已退出后收紧约束。Writer 启动时校验数据库 schema major/minor 能力；不兼容则在 P0 停止，不猜测列映射。每个 migration 保存 DDL 哈希、前置/后置校验和停用策略；本方案不承诺破坏性 down migration。
+采用 expand/contract：先添加可空列/新表并部署双读 database-client，再回填和校验，然后切换写入，最后收紧约束。database-client 启动时校验数据库 schema major/minor 能力；不兼容则在 P0 停止，不猜测列映射。每个 migration 保存 DDL 哈希、前置/后置校验和停用策略；本方案不承诺破坏性 down migration。
 
-### 10.3 Writer 运行可观测性
+### 10.3 database-client 运行可观测性
 
 必须暴露但不混入审计结论的运行指标：Outbox pending 数/字节、最老未同步年龄、每类错误重试数、dead-letter 数/年龄、批处理大小、MySQL 延迟/回滚率、checkpoint 落后量、脱敏 blocked 率和 schema conflict 数。监控数据不得包含 payload、路径或凭据。
 
@@ -525,7 +525,7 @@ P6 只冻结指标所需的原始事实和 as-of event。指标由后置、版�
 2. 已完成：event、config、Agent `_process` 和 projection map 协议升级到 `1.4.0`。
 3. 已完成：脱敏器、ULID、canonical JSON、hash 和 idempotency 工具。
 4. 已完成：本地 Outbox、hash-chain、排他锁、尾部恢复、checkpoint 和 dead-letter。
-5. 已完成：`init-run`、`record-event`、`record-snapshot`、`flush-outbox`、`finalize-run` 五个接口及事务 Writer。
+5. 已完成：`init-run`、`record-event`、`record-snapshot`、`flush-outbox`、`finalize-run` 五个接口及事务 database-client。
 6. 已完成：Recon/Hunter/Critic/Verifier结构化`_process`契约、`agent-adapter.cjs`自动规范化接入、稳定实体ID和Hunter两检查点机制。
 7. 已完成：P0–P6 Parent 记录点写入现有 Skill 指导流程。
 8. 已完成：36表、527字段、32类事件的静态对齐校验，并在运行时强制阶段、必需业务投影、因果先决、评分重算和Verifier独立性。
