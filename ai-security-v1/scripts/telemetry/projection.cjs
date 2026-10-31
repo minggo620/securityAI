@@ -132,6 +132,20 @@ function validateEventAgainstHistory(event, records) {
   if (Date.parse(cause.envelope.occurred_at) > Date.parse(event.occurred_at)) throw new Error('PROJECTION_FAILED: causal event occurs after dependent event');
 }
 
+function validateTaskStartIds(events, records) {
+  const used = new Set(records
+    .filter((record) => record.envelope.event_type === 'agent.task_started')
+    .map((record) => record.envelope.agent_task_id)
+    .filter(Boolean));
+  for (const event of events) {
+    if (event.event_type !== 'agent.task_started' || !event.agent_task_id) continue;
+    if (used.has(event.agent_task_id)) {
+      throw new Error('TASK_ID_REUSE: agent_task_id already has a task-start event in this run');
+    }
+    used.add(event.agent_task_id);
+  }
+}
+
 function bindValue(value) {
   if (value === null) return 'NULL';
   if (typeof value === 'boolean') return value ? '1' : '0';
@@ -239,4 +253,4 @@ function transactionSql(record, columns) {
   return ['START TRANSACTION;', ...sequence.map((operation, index) => operationSql(operation, columns, index)), 'COMMIT;'].join('\n');
 }
 
-module.exports = { bindValue, eventRule, operationSql, operationsFor, phaseAllowed, transactionSql, validateEventAgainstHistory };
+module.exports = { bindValue, eventRule, operationSql, operationsFor, phaseAllowed, transactionSql, validateEventAgainstHistory, validateTaskStartIds };

@@ -12,7 +12,7 @@ const { defaultConfig, validateConfig } = require('./config.cjs');
 const database = require('./database-client.cjs');
 const { buildEvent, sha256 } = require('./event-builder.cjs');
 const outbox = require('./outbox.cjs');
-const { operationsFor, validateEventAgainstHistory } = require('./projection.cjs');
+const { operationsFor, validateEventAgainstHistory, validateTaskStartIds } = require('./projection.cjs');
 const { ulid } = require('./ulid.cjs');
 
 const OPERATION_MODES = new Set(['guidance', 'focused_review', 'full_audit', 'database']);
@@ -63,6 +63,7 @@ function safeError(error, stage, attempts = 1) {
     SCHEMA_INCOMPATIBLE: 'remote ai_security schema does not match the pinned contract',
     OUTBOX_UNWRITABLE: 'local telemetry state is not safely writable',
     PROJECTION_FAILED: 'the telemetry projection was rejected',
+    TASK_ID_REUSE: 'an agent task ID was already used in this run; assign a fresh ID before preparing telemetry',
     CONCURRENCY_CONFLICT: 'the remote row version changed concurrently',
     IDEMPOTENCY_CONFLICT: 'the idempotency key conflicts with another request',
     INVALID_CONFIG: 'strict remote telemetry configuration is invalid',
@@ -339,6 +340,10 @@ function prepare(args) {
   } else if (input.kind === 'snapshot') eventInputs = [snapshotEvent(outputDir, input)];
   else if (input.kind === 'finalize') eventInputs = [finalEvent(input)];
   else throw new Error('INVALID_CONFIG: prepare kind must be init, event, snapshot, or finalize');
+
+  const outboxFile = outbox.resolveInside(outputDir, config.outbox_relative_path);
+  const history = outbox.readLines(outboxFile, false).records;
+  validateTaskStartIds(eventInputs, history);
 
   const built = eventInputs.map((eventInput) => buildEvent(eventInput, config));
   const planId = ulid();

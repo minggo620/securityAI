@@ -52,7 +52,9 @@ After a successful commit, report position, `projected|already_applied`, event I
 
 On the first `DB_UNAVAILABLE`, `commit-next` returns `status=retry_required` and retains the same Outbox event and idempotency key. Tell the user that the event is retained, then immediately retry once with `--retry true`. A second failure or any non-retryable error returns `status=blocked`; stop the task. Never create a replacement event or continue from an uncommitted tail.
 
-Stable error codes include `MYSQL_CLIENT_UNAVAILABLE`, `NETWORK_AUTHORIZATION_REQUIRED`, `DB_UNAVAILABLE`, `AUTH_REQUIRED`, `TLS_ERROR`, `SCHEMA_INCOMPATIBLE`, `OUTBOX_UNWRITABLE`, `OUTBOX_CORRUPT`, `PROJECTION_FAILED`, `CONCURRENCY_CONFLICT`, `IDEMPOTENCY_CONFLICT`, `NOTICE_REQUIRED`, `ORDER_VIOLATION`, and `INVALID_CONFIG`.
+Before preparing an `agent.task_started` event, the Parent assigns a fresh ULID `agent_task_id` and a fresh unique `agent_id` to that task and records them in a run-local registry. The Parent alone owns these identifiers. Never reuse them for retries, replacements, or later runs. `prepare` checks the current run Outbox and returns `TASK_ID_REUSE` before writing a plan if the task ID already has a start event in that run; assign fresh IDs and prepare again. If MySQL instead rejects a task start with `PROJECTION_FAILED` because the ID already exists in a prior run, treat that run as blocked: do not retry or edit the historical row, and do not continue its uncommitted Outbox tail. Start a new strict session and allocate fresh IDs for all new tasks.
+
+Stable error codes include `MYSQL_CLIENT_UNAVAILABLE`, `NETWORK_AUTHORIZATION_REQUIRED`, `DB_UNAVAILABLE`, `AUTH_REQUIRED`, `TLS_ERROR`, `SCHEMA_INCOMPATIBLE`, `OUTBOX_UNWRITABLE`, `OUTBOX_CORRUPT`, `PROJECTION_FAILED`, `TASK_ID_REUSE`, `CONCURRENCY_CONFLICT`, `IDEMPOTENCY_CONFLICT`, `NOTICE_REQUIRED`, `ORDER_VIOLATION`, and `INVALID_CONFIG`.
 
 ## Mode record points
 

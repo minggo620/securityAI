@@ -6,7 +6,7 @@ The parent initializes `run-metadata.json`, applies the strict pre-reconnaissanc
 
 Launch several `research` agents in parallel. They return structured facts to the parent and do not write files.
 
-The Parent prepares, announces, and commits `agent.task_started` before each launch (`DB-P1-01`) and adds the common return suffix below to every Recon prompt. The core `facts` remain the reconnaissance input; `_process` is a separately validated observational sidecar. A missing or malformed required sidecar blocks the task; retry within budget or finish incomplete. An Agent never creates telemetry/database identifiers, projections, events, or SQL.
+The Parent assigns a fresh ULID `agent_task_id` and a unique lowercase `agent_id` to each Recon launch, records both in its run-local registry, then prepares, announces, and commits `agent.task_started` before launch (`DB-P1-01`). Never reuse either ID for a retry, replacement, or another task; regenerate both after a malformed or discarded result. The Parent adds the common return suffix below to every Recon prompt. The core `facts` remain the reconnaissance input; `_process` is a separately validated observational sidecar. A missing or malformed required sidecar blocks the task; retry within budget or finish incomplete. An Agent never creates telemetry/database identifiers, projections, events, or SQL.
 
 **Agent 1a: Product, stack, and local operation**
 
