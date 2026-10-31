@@ -22,7 +22,7 @@ function stableId(input, logicalKey) {
 
 function base(input, eventType, suffix, eventId = null) {
   return {
-    schema_version: '1.4.0', event_id: eventId || stableId(input, `event:${suffix}`), run_id: input.run_id, phase_code: input.phase_code,
+    schema_version: '1.5.0', event_id: eventId || stableId(input, `event:${suffix}`), run_id: input.run_id, phase_code: input.phase_code,
     event_type: eventType, actor_type: input.actor_type, actor_id: input.agent_result._process.agent_id,
     agent_task_id: input.agent_task_id, correlation_id: input.correlation_id || input.agent_task_id,
     causation_id: null, occurred_at: input.occurred_at || new Date().toISOString(), source_class: 'P',
@@ -39,7 +39,7 @@ function evidenceOperation(input, ref, evidenceId) {
     evidence_type: ref.fact_kind, repo_path: location, start_line: ref.start_line, end_line: ref.end_line,
     scope_name: ref.scope, description: ref.description, artifact_id: null, tool_execution_id: null,
     payload_id: location ? null : '$payload_id', evidence_sha256: hex(canonicalJson(ref)),
-    schema_version: '1.4.0', source_class: ref.fact_kind === 'source_fact' ? 'S' : 'O'
+    schema_version: '1.5.0', source_class: ref.fact_kind === 'source_fact' ? 'S' : 'O'
   } };
 }
 
@@ -59,7 +59,7 @@ function adaptRecon(input, process, context, entities) {
       evidence_strength: fact.evidence_strength, unknown_reason: fact.unknown_reason,
       accepted_by_parent: context.accepted_fact_ids?.includes(fact.fact_id) || false,
       included_in_architecture: context.architecture_fact_ids?.includes(fact.fact_id) || false,
-      schema_version: '1.4.0', source_class: fact.fact_kind === 'source_fact' ? 'S' : 'O'
+      schema_version: '1.5.0', source_class: fact.fact_kind === 'source_fact' ? 'S' : 'O'
     } });
     event.payload = { _telemetry: { phase_execution_id: context.phase_execution_id }, agent_process: process, fact_index: index, projections };
     events.push(event);
@@ -85,7 +85,7 @@ function adaptHunterPlan(input, process, context, entities) {
     const projections = [{ table: 'audit_hypothesis', action: hypothesis.version === 1 ? 'insert' : 'update', values: hypothesis.version === 1 ? {
       hypothesis_id: hypothesisId, run_id: '$run_id', coverage_unit_id: coverageId, creator_task_id: input.agent_task_id,
       local_hypothesis_key: hypothesis.hypothesis_key, current_version_id: null, status: hypothesis.status,
-      schema_version: '1.4.0', source_class: 'P', row_version: 0
+      schema_version: '1.5.0', source_class: 'P', row_version: 0
     } : { status: hypothesis.status, row_version: priorRowVersion + 1 }, where: hypothesis.version === 1 ? null : {
       hypothesis_id: hypothesisId, row_version: priorRowVersion
     } }, { table: 'audit_hypothesis_version', action: 'insert', values: {
@@ -95,11 +95,11 @@ function adaptHunterPlan(input, process, context, entities) {
       predicted_trace: json(hypothesis.predicted_trace), target_boundary: hypothesis.trust_boundary, affected_resource: hypothesis.affected_resource,
       predicted_result: hypothesis.predicted_result, preconditions_json: json(hypothesis.preconditions), unknown_facts_json: json(hypothesis.unknown_facts),
       alternative_explanations_json: json(hypothesis.alternative_explanations), revision_reason: hypothesis.revision_reason || 'initial version',
-      schema_version: '1.4.0', source_class: 'P'
+      schema_version: '1.5.0', source_class: 'P'
     } }];
     hypothesis.coverage_ids.forEach((coverageKey, ordinal) => projections.push({ table: 'audit_hypothesis_coverage', action: 'insert', values: {
       hypothesis_coverage_id: stableId(input, `hypothesis:${hypothesis.hypothesis_key}:coverage:${ordinal + 1}`), hypothesis_id: hypothesisId, coverage_unit_id: requireMapValue(context.coverage_units, coverageKey, 'coverage unit'),
-      relation_kind: coverageKey === hypothesis.primary_coverage_id ? 'primary' : 'supporting', ordinal: ordinal + 1, schema_version: '1.4.0', source_class: 'P'
+      relation_kind: coverageKey === hypothesis.primary_coverage_id ? 'primary' : 'supporting', ordinal: ordinal + 1, schema_version: '1.5.0', source_class: 'P'
     } }));
     for (const refId of hypothesis.evidence_refs) {
       const ref = evidenceRefs.get(refId);
@@ -109,7 +109,7 @@ function adaptHunterPlan(input, process, context, entities) {
       projections.push({ table: 'audit_hypothesis_evidence', action: 'insert', values: {
         hypothesis_evidence_id: stableId(input, `hypothesis:${hypothesis.hypothesis_key}:evidence-link:${refId}`), hypothesis_version_id: versionId, evidence_id: evidenceId,
         relation_kind: ref.fact_kind === 'unknown' ? 'unknown' : 'supports', weight: null,
-        rationale: ref.description, schema_version: '1.4.0', source_class: ref.fact_kind === 'source_fact' ? 'S' : 'O'
+        rationale: ref.description, schema_version: '1.5.0', source_class: ref.fact_kind === 'source_fact' ? 'S' : 'O'
       } });
     }
     projections.push({ table: 'audit_hypothesis_score', action: 'insert', values: {
@@ -120,7 +120,7 @@ function adaptHunterPlan(input, process, context, entities) {
       estimated_agent_calls: score.estimated_agent_calls ?? null, estimated_token_count: score.estimated_token_count ?? null,
       priority_score: score.priority_score, formula_name: score.formula_name, formula_version: score.formula_version,
       scoring_protocol: 'agent-explicit-pre-validation', scoring_protocol_version: '1.0', model_config_sha256: null,
-      prompt_template_sha256: null, evidence_as_of_event_id: '$event_id', scored_at: mysqlDate(event.occurred_at), schema_version: '1.4.0', source_class: 'P'
+      prompt_template_sha256: null, evidence_as_of_event_id: '$event_id', scored_at: mysqlDate(event.occurred_at), schema_version: '1.5.0', source_class: 'P'
     } });
     projections.push({ table: 'audit_hypothesis', action: 'update', values: {
       current_version_id: versionId, row_version: hypothesis.version === 1 ? 1 : priorRowVersion + 2
@@ -136,7 +136,7 @@ function adaptHunterPlan(input, process, context, entities) {
     event.payload = { _telemetry: { phase_execution_id: context.phase_execution_id }, relation, projections: [{ table: 'audit_hypothesis_relation', action: 'insert', values: {
       hypothesis_relation_id: stableId(input, `hypothesis-relation:${index + 1}`), run_id: '$run_id', from_hypothesis_id: from.hypothesis_id, to_hypothesis_id: to.hypothesis_id,
       relation_kind: relation.relation_kind, event_id: '$event_id', rationale: relation.rationale,
-      schema_version: '1.4.0', source_class: 'P'
+      schema_version: '1.5.0', source_class: 'P'
     } }] };
     events.push(event);
   }
@@ -150,14 +150,14 @@ function adaptHunterPlan(input, process, context, entities) {
       attack_plan_id: planId, hypothesis_version_id: hypothesis.hypothesis_version_id, plan_version_no: plan.plan_version,
       author_task_id: input.agent_task_id, plan_mode: plan.mode, objective: plan.objective, stop_condition: plan.stop_condition,
       expected_boundary_result: plan.expected_boundary_result, status: plan.status === 'ready' ? 'approved' : plan.status,
-      schema_version: '1.4.0', source_class: 'P'
+      schema_version: '1.5.0', source_class: 'P'
     } }];
     for (const step of plan.steps) {
       const stepId = stableId(input, `attack-plan:${plan.hypothesis_key}:${plan.plan_version}:step:${step.ordinal}`); steps[step.ordinal] = stepId;
       projections.push({ table: 'audit_attack_step', action: 'insert', values: {
         attack_step_id: stepId, attack_plan_id: planId, ordinal: step.ordinal, action_kind: step.action_kind,
         action_text: step.action, precondition_text: step.precondition, input_description: step.input_description,
-        expected_result: step.expected_result, planned_tool: step.planned_tool, status: 'planned', schema_version: '1.4.0', source_class: 'P'
+        expected_result: step.expected_result, planned_tool: step.planned_tool, status: 'planned', schema_version: '1.5.0', source_class: 'P'
       } });
     }
     entities.attack_plans[plan.hypothesis_key] = { attack_plan_id: planId, event_id: event.event_id, steps };
@@ -184,7 +184,7 @@ function adaptHunterResult(input, process, context, entities) {
         execution_no: 1, executor_task_id: input.agent_task_id, execution_mode: observation.execution_mode,
         status: observation.status, actual_input_payload_id: observation.actual_input ? '$payload_id' : null,
         observed_result: observation.observed, tool_execution_id: null, evidence_id: evidenceId, blocker_reason: observation.blocker_reason,
-        started_at: null, ended_at: mysqlDate(event.occurred_at), schema_version: '1.4.0', source_class: 'O'
+        started_at: null, ended_at: mysqlDate(event.occurred_at), schema_version: '1.5.0', source_class: 'O'
       } });
       event.payload = { _telemetry: { phase_execution_id: context.phase_execution_id }, observation, projections };
       events.push(event);
@@ -199,7 +199,7 @@ function adaptHunterResult(input, process, context, entities) {
         observation_kind: 'hunter_proposal', hypothesis_version_id: hv.hypothesis_version_id,
         local_fingerprint: observation.candidate_fingerprint, local_fingerprint_hash: hex(observation.candidate_fingerprint.normalize('NFC')),
         proposed_verdict: observation.relation_to_claim === 'supports' ? 'confirmed' : 'needs_validation', payload_id: '$payload_id',
-        observed_at: mysqlDate(event.occurred_at), schema_version: '1.4.0', source_class: 'O'
+        observed_at: mysqlDate(event.occurred_at), schema_version: '1.5.0', source_class: 'O'
       } }] };
       events.push(event);
     }
@@ -222,7 +222,7 @@ function adaptVerifier(input, process, context) {
     projections.push({ table: 'audit_validation_observation', action: 'insert', values: {
       validation_observation_id: stableId(input, `validation-observation:${observation.observation_id}`), validation_id: validationId, ordinal: index + 1, observation_kind: observation.kind,
       expected_text: observation.expected, observed_text: observation.observed, relation_to_claim: observation.relation_to_claim,
-      evidence_id: evidenceId, schema_version: '1.4.0', source_class: 'O'
+      evidence_id: evidenceId, schema_version: '1.5.0', source_class: 'O'
     } });
     event.payload = { _telemetry: { phase_execution_id: context.phase_execution_id }, observation, projections };
     events.push(event);
@@ -234,7 +234,7 @@ function adaptVerifier(input, process, context) {
       decision_id: context.decision.decision_id || stableId(input, `validation-decision:${context.decision.decision_no || 1}`), validation_id: validationId, decision_no: context.decision.decision_no || 1,
       decision: context.decision.decision, reason: context.decision.reason, record_payload_id: '$payload_id',
       material_change: Boolean(context.decision.material_change), supersedes_decision_id: context.decision.supersedes_decision_id || null,
-      decided_at: mysqlDate(event.occurred_at), schema_version: '1.4.0', source_class: 'P'
+      decided_at: mysqlDate(event.occurred_at), schema_version: '1.5.0', source_class: 'P'
     } }, { table: 'audit_candidate', action: 'update', values: {
       status: 'decided', row_version: context.candidate_row_version + 1
     }, where: { candidate_id: requireUlid(context.candidate_id, 'candidate_id'), row_version: context.candidate_row_version } }] };
@@ -282,7 +282,7 @@ function adaptAgentResult(input) {
       reopened.payload = { _telemetry: { phase_execution_id: context.phase_execution_id }, critic_item: item, projections: [{ table: 'audit_coverage_attempt', action: 'insert', values: {
         coverage_attempt_id: stableId(input, `coverage:${item.coverage_unit_id}:attempt:${item.wave}`), coverage_unit_id: item.coverage_unit_id, wave: item.wave, status: item.prior_status || 'blocked',
         owner_task_id: item.prior_owner_task_id || input.agent_task_id, snapshot_payload_id: '$payload_id', reassignment_reason: item.reason,
-        schema_version: '1.4.0', source_class: 'P'
+        schema_version: '1.5.0', source_class: 'P'
       } }, { table: 'audit_coverage_unit', action: 'update', values: {
         wave: item.wave, status: 'planned', owner_task_id: item.new_owner_task_id, row_version: item.row_version + 1
       }, where: { coverage_unit_id: item.coverage_unit_id, row_version: item.row_version } }] };

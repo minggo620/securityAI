@@ -191,13 +191,13 @@ function payloadRow(event) {
       is_truncated: Boolean(event.payload.is_truncated),
       redaction_status: event.payload.redaction_status,
       redaction_profile: 'telemetry-default',
-      redaction_version: '1.4.0',
+      redaction_version: '1.5.0',
       sensitivity: 'internal',
       retention_policy: 'long_term_configurable',
       retain_until: null,
       purged_at: null,
       purge_reason: null,
-      schema_version: '1.4.0',
+      schema_version: '1.5.0',
       source_class: event.source_class
     }
   };
@@ -222,7 +222,7 @@ function eventRow(event, envelopeSha256, idempotencyHash) {
       source_refs_json: { $json: event.source_refs },
       envelope_sha256: { $hex: envelopeSha256 },
       occurred_at: event.occurred_at.replace('T', ' ').replace('Z', ''),
-      schema_version: '1.4.0',
+      schema_version: '1.5.0',
       source_class: event.source_class
     }
   };

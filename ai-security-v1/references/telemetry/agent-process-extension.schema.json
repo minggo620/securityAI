@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:ai-security-v1:agent-process-extension:1.4.0",
+  "$id": "urn:ai-security-v1:agent-process-extension:1.5.0",
   "title": "Value of the optional _process member added to an existing agent result",
   "description": "This schema validates only the _process sidecar. The original Recon/Hunter/Critic/Verifier result remains authoritative and is stored separately. Parent-generated ULIDs are deliberately absent.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "result_type", "agent_id", "explicit_rationale", "evidence_refs", "observations"],
   "properties": {
-    "schema_version": { "const": "1.4.0" },
+    "schema_version": { "const": "1.5.0" },
     "result_type": { "enum": ["recon", "hunter_plan", "hunter_result", "critic", "candidate_validation", "final_review"] },
     "agent_id": { "$ref": "#/$defs/agentId" },
     "explicit_rationale": { "type": "string", "minLength": 1, "maxLength": 20000 },

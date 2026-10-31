@@ -1,5 +1,5 @@
 {
-  "telemetry_protocol_version": "1.4.0",
+  "telemetry_protocol_version": "1.5.0",
   "database_schema_version": "1.3.0-core",
   "database_schema_body_sha256": "6e9c0af3b51be034a802a9aa547182b181a7adf326265a4be7730452c15d7f46",
   "core_table_count": 36,
@@ -10,9 +10,9 @@
   "check_constraint_count": 104,
   "general_ci_table_count": 36,
   "utf8mb4_character_column_count": 227,
-  "projection_event_count": 32,
+  "projection_event_count": 35,
   "default_mode": "remote",
-  "default_failure_policy": "best_effort",
+  "default_failure_policy": "required",
   "database_is_replica": true,
   "views_required": false,
   "schema_seed_required": false

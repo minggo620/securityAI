@@ -11,4 +11,4 @@ Captured before the process-telemetry implementation.
 - `validate-findings.cjs`: `e85f232e36bfac0f866f244da50376692d6b45c690beadcb00608b0e6c8b5283`
 - `validate-coverage-ledger.cjs`: `2eb280bd2e33c002916f86db9b29f9edfedb6454e5db973c766290465b868ac8`
 
-Database schema remains `1.3.0-core`; the telemetry protocol introduced by this change is `1.4.0`.
+Database schema remains `1.3.0-core`; the telemetry protocol introduced by this change is `1.5.0`.

@@ -88,6 +88,17 @@ function runtimeConfig(args, outputDir) {
   return fs.existsSync(file) ? loadConfig(file) : validateConfig(defaultConfig());
 }
 
+function legacyReplayConfig(args, outputDir) {
+  const file = path.resolve(args.config || path.join(outputDir, 'telemetry/config.json'));
+  const stat = fs.lstatSync(file);
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1) throw new Error('OUTBOX_UNWRITABLE: legacy config is unsafe');
+  const config = JSON.parse(fs.readFileSync(file, 'utf8'));
+  if (config.schema_version !== '1.4.0' || config.mode !== 'remote' || config.remote_sync?.enabled !== true || config.consent?.local_outbox !== true || config.consent?.remote_mysql !== true) {
+    throw new Error('INVALID_CONFIG: legacy replay accepts only 1.4.0 remote Outboxes with recorded consent');
+  }
+  return config;
+}
+
 function appendBuilt(outputDir, config, built) {
   if (config.mode === 'off') return { ok: true, event_id: built.event.event_id, status: 'disabled', error: null };
   operationsFor(built.event);
@@ -138,7 +149,7 @@ function initRun(args) {
       budget: input.budget ?? null,
       execution_policy: input.execution_policy || 'sandboxed-source-and-local-only',
       skill_manifest_sha256: { $hex: skillManifestHash() },
-      skill_schema_version: '1.4.0',
+      skill_schema_version: '1.5.0',
       telemetry_mode: config.mode,
       telemetry_failure_policy: config.failure_policy,
       run_status: 'initializing',
@@ -149,16 +160,16 @@ function initRun(args) {
       telemetry_incomplete_reason: null,
       started_at: mysqlDate(),
       ended_at: null,
-      schema_version: '1.4.0',
+      schema_version: '1.5.0',
       source_class: 'P',
       row_version: 0
     }
   }, {
     table: 'audit_phase_execution', action: 'insert', values: {
-      phase_execution_id: phaseId, run_id: runId, phase_code: 'P0', attempt_no: 1, status: 'running', input_payload_id: '$payload_id', output_payload_id: null, failure_reason: null, started_at: mysqlDate(), ended_at: null, schema_version: '1.4.0', source_class: 'P'
+      phase_execution_id: phaseId, run_id: runId, phase_code: 'P0', attempt_no: 1, status: 'running', input_payload_id: '$payload_id', output_payload_id: null, failure_reason: null, started_at: mysqlDate(), ended_at: null, schema_version: '1.5.0', source_class: 'P'
     }
   }];
-  for (const [index, scope] of (input.scope_paths || []).entries()) projections.push({ table: 'audit_run_scope', action: 'insert', values: { scope_id: ulid(), run_id: runId, ordinal: index + 1, scope_type: scope.scope_type || 'path', scope_value: scope.scope_value || scope.path || String(scope), included: scope.included !== false, reason: scope.reason || null, schema_version: '1.4.0', source_class: scope.source_class || 'S' } });
+  for (const [index, scope] of (input.scope_paths || []).entries()) projections.push({ table: 'audit_run_scope', action: 'insert', values: { scope_id: ulid(), run_id: runId, ordinal: index + 1, scope_type: scope.scope_type || 'path', scope_value: scope.scope_value || scope.path || String(scope), included: scope.included !== false, reason: scope.reason || null, schema_version: '1.5.0', source_class: scope.source_class || 'S' } });
   const built = buildEvent({
     run_id: runId, phase_code: 'P0', event_type: 'run.initialized', actor_type: 'parent', source_class: 'P', payload_type: 'run.initialized',
     idempotency_key: requestKey ? `request/${requestKey}/P0/init` : `run/${runId}/P0/init`, request_sha256: sha256(canonicalJson({ command: 'init-run', input, config })),
@@ -233,7 +244,7 @@ function recordSnapshot(args) {
       artifact: { relative_path: input.relative_path, content_sha256: contentHash, byte_size: bytes.length },
       snapshot_text: bytes.length <= config.payload_max_bytes ? bytes.toString('utf8') : null,
       projections: [{ table: 'audit_artifact', action: 'insert', values: {
-        artifact_id: artifactId, run_id: input.run_id, owner_task_id: input.owner_task_id || null, artifact_kind: input.artifact_kind, version_no: input.version_no || 1, artifact_status: input.artifact_status || 'final', relative_path: input.relative_path, path_hash: { $hex: sha256(input.relative_path.normalize('NFC')) }, content_sha256: { $hex: contentHash }, byte_size: bytes.length, mime_type: input.mime_type || 'application/octet-stream', promotion_status: input.promotion_status || 'promoted', promotion_reason: input.promotion_reason || null, schema_version: '1.4.0', source_class: input.source_class || 'O'
+        artifact_id: artifactId, run_id: input.run_id, owner_task_id: input.owner_task_id || null, artifact_kind: input.artifact_kind, version_no: input.version_no || 1, artifact_status: input.artifact_status || 'final', relative_path: input.relative_path, path_hash: { $hex: sha256(input.relative_path.normalize('NFC')) }, content_sha256: { $hex: contentHash }, byte_size: bytes.length, mime_type: input.mime_type || 'application/octet-stream', promotion_status: input.promotion_status || 'promoted', promotion_reason: input.promotion_reason || null, schema_version: '1.5.0', source_class: input.source_class || 'O'
       } }]
     },
     source_refs: input.source_refs || []
@@ -241,11 +252,11 @@ function recordSnapshot(args) {
   response(appendBuilt(outputDir, config, buildEvent(eventInput, config)));
 }
 
-function syncOutbox(outputDir, config) {
+function syncOutbox(outputDir, config, options = {}) {
   if (config.mode !== 'remote' || !config.remote_sync.enabled || !config.consent.remote_mysql) throw new Error('AUTH_REQUIRED: remote flush requires remote mode and consent');
   const result = outbox.withLock(outputDir, () => {
     const file = outbox.resolveInside(outputDir, config.outbox_relative_path);
-    const records = outbox.readLines(file, true).records;
+    const records = outbox.readLines(file, true, { allowLegacy14: options.allowLegacy14 === true }).records;
     const checkpoint = outbox.validateCheckpoint(records, outbox.readCheckpoint(outputDir));
     const options = { tlsMode: config.remote_sync.tls_mode };
     const state = database.preflight(options);
@@ -268,8 +279,9 @@ function syncOutbox(outputDir, config) {
 
 function flushOutbox(args) {
   const outputDir = path.resolve(args.output_dir || '.');
-  const config = runtimeConfig(args, outputDir);
-  const result = syncOutbox(outputDir, config);
+  const legacy = args.legacy_replay === true || args.legacy_replay === 'true';
+  const config = legacy ? legacyReplayConfig(args, outputDir) : runtimeConfig(args, outputDir);
+  const result = syncOutbox(outputDir, config, { allowLegacy14: legacy });
   response(result);
 }
 
@@ -306,12 +318,9 @@ function finalizeRun(args) {
 function main() {
   const args = parseArgs(process.argv.slice(2));
   const command = args._[0];
-  if (command === 'init-run') return initRun(args);
-  if (command === 'record-event') return recordEvent(args);
-  if (command === 'record-snapshot') return recordSnapshot(args);
-  if (command === 'flush-outbox') return flushOutbox(args);
-  if (command === 'finalize-run') return finalizeRun(args);
-  throw new Error('unknown command; use init-run, record-event, record-snapshot, flush-outbox, or finalize-run');
+  if (command === 'flush-outbox' && (args.legacy_replay === true || args.legacy_replay === 'true')) return flushOutbox(args);
+  if (new Set(['init-run', 'record-event', 'record-snapshot', 'flush-outbox', 'finalize-run']).has(command)) throw new Error('STRICT_PREPARE_REQUIRED: use audit-session.cjs check-db, prepare, commit-next, and verify');
+  throw new Error('unknown command; use the strict audit-session.cjs interface');
 }
 
 try { main(); } catch (error) { fail(error); }

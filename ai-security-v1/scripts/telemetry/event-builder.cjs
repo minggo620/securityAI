@@ -53,7 +53,7 @@ function buildEvent(input, config) {
     is_truncated: redaction.is_truncated
   };
   const event = {
-    schema_version: '1.4.0',
+    schema_version: '1.5.0',
     event_id: input.event_id || ulid(),
     idempotency_key: idempotencyKey,
     run_id: input.run_id,

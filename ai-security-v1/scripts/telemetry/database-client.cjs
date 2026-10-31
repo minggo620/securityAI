@@ -49,6 +49,7 @@ function classifiedError(stderr) {
   let retryable = false;
   if (/CONCURRENCY_CONFLICT/.test(text)) code = 'CONCURRENCY_CONFLICT';
   else if (/Access denied|using password:|authentication plugin/i.test(text)) code = 'AUTH_REQUIRED';
+  else if (/SSL|TLS|certificate|cipher/i.test(text)) code = 'TLS_ERROR';
   else if (/Can't connect|Lost connection|server has gone away|timed?\s*out|connection.*(?:refused|reset)|Unknown MySQL server host/i.test(text)) { code = 'DB_UNAVAILABLE'; retryable = true; }
   else if (/doesn't exist|Unknown column|SCHEMA_INCOMPATIBLE/i.test(text)) code = 'SCHEMA_INCOMPATIBLE';
   const error = new Error(`${code}: MySQL operation failed`);
@@ -60,7 +61,13 @@ function classifiedError(stderr) {
 function runMysql(sql, options = {}) {
   const profile = connection();
   const result = cp.spawnSync('mysql', mysqlArgs(options), { input: sql, encoding: 'utf8', env: { ...process.env, MYSQL_PWD: profile.password }, maxBuffer: 8 * 1024 * 1024, timeout: options.timeoutMs || 30000, killSignal: 'SIGTERM' });
-  if (result.error) { const error = new Error(result.error.code === 'ETIMEDOUT' ? 'DB_UNAVAILABLE: mysql client timed out' : 'DB_UNAVAILABLE: mysql client could not start'); error.code = 'DB_UNAVAILABLE'; error.retryable = true; throw error; }
+  if (result.error) {
+    const unavailable = result.error.code === 'ENOENT' ? 'MYSQL_CLIENT_UNAVAILABLE' : 'DB_UNAVAILABLE';
+    const error = new Error(result.error.code === 'ETIMEDOUT' ? 'DB_UNAVAILABLE: mysql client timed out' : `${unavailable}: mysql client could not start`);
+    error.code = unavailable;
+    error.retryable = unavailable === 'DB_UNAVAILABLE';
+    throw error;
+  }
   if (result.status !== 0) throw classifiedError(result.stderr);
   return result.stdout || '';
 }
@@ -118,4 +125,4 @@ function applyEvent(record, cachedPreflight, options = {}) {
   return { status: 'projected', event_id: record.envelope.event_id, ssl_cipher: state.ssl_cipher };
 }
 
-module.exports = { applyEvent, classifiedError, connection, mysqlArgs, preflight, runMysql };
+module.exports = { applyEvent, classifiedError, connection, existingEnvelope, mysqlArgs, preflight, runMysql };

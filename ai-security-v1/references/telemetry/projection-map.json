@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.4.0",
+  "schema_version": "1.5.0",
   "database_contract": "1.3.0-core",
   "projection_policy": {
     "transaction_scope": "one_event_plus_all_normalized_projections",
@@ -40,6 +40,9 @@
     { "event_type": "artifact.snapshot_created", "phase": "P0-P6", "tables": ["audit_artifact", "audit_payload", "audit_event"], "required_tables": ["audit_artifact"] },
     { "event_type": "human.adjudication_recorded", "phase": "POST", "tables": ["audit_human_adjudication", "audit_payload", "audit_event"], "required_tables": ["audit_human_adjudication"] },
     { "event_type": "research.input_frozen", "phase": "POST", "tables": ["audit_event"], "required_tables": [] },
+    { "event_type": "interaction.checkpoint_recorded", "phase": "P0-P6|POST", "tables": ["audit_payload", "audit_event"], "required_tables": [] },
+    { "event_type": "database.operation_authorized", "phase": "P0-P6|POST", "tables": ["audit_payload", "audit_event"], "required_tables": [] },
+    { "event_type": "database.operation_completed", "phase": "P0-P6|POST", "tables": ["audit_payload", "audit_event"], "required_tables": [], "requires_prior_event": ["database.operation_authorized"] },
     { "event_type": "sync.status_changed", "phase": "P0-P6", "tables": ["audit_run", "audit_event"], "required_tables": ["audit_run"] },
     { "event_type": "run.finalized", "phase": "P6", "tables": ["audit_run", "audit_phase_execution", "audit_event"], "required_tables": ["audit_run"] }
   ]

@@ -62,10 +62,10 @@ function findByIdempotency(records, runId, idempotencyKey) {
   return records.find((record) => (runId == null || record.envelope.run_id === runId) && record.envelope.idempotency_key === idempotencyKey) || null;
 }
 
-function readLines(file, recoverTail = false) {
+function readLines(file, recoverTail = false, options = {}) {
   if (!fs.existsSync(file)) return { records: [], recovered: false };
   const stat = fs.lstatSync(file);
-  if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('OUTBOX_CORRUPT: outbox must be a regular file');
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1) throw new Error('OUTBOX_CORRUPT: outbox must be a single-link regular file');
   const text = fs.readFileSync(file, 'utf8');
   const hasTail = text.length > 0 && !text.endsWith('\n');
   if (hasTail && !recoverTail) throw new Error('OUTBOX_CORRUPT: incomplete tail');
@@ -90,7 +90,8 @@ function readLines(file, recoverTail = false) {
     base.envelope = record.envelope;
     const expected = sha256(canonicalJson(base));
     if (record.record_sha256 !== expected) throw new Error(`OUTBOX_CORRUPT: record hash mismatch at record ${index + 1}`);
-    validateEnvelope(record.envelope);
+    if (options.allowLegacy14 && record.envelope?.schema_version === '1.4.0') validateEnvelope({ ...record.envelope, schema_version: '1.5.0' });
+    else validateEnvelope(record.envelope);
     previous = record.record_sha256;
   }
   return { records, recovered: hasTail };
@@ -131,7 +132,7 @@ function readCheckpoint(outputDir) {
   const file = resolveInside(outputDir, 'telemetry/checkpoint.json');
   if (!fs.existsSync(file)) return { sequence: 0, record_sha256: null };
   const stat = fs.lstatSync(file);
-  if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('OUTBOX_CORRUPT: checkpoint must be a regular file');
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1) throw new Error('OUTBOX_CORRUPT: checkpoint must be a single-link regular file');
   let checkpoint;
   try { checkpoint = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { throw new Error('OUTBOX_CORRUPT: checkpoint is not valid JSON'); }
   if (!Number.isInteger(checkpoint.sequence) || checkpoint.sequence < 0) throw new Error('OUTBOX_CORRUPT: invalid checkpoint sequence');

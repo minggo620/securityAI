@@ -112,7 +112,7 @@ function validateEnvelope(value) {
   for (const key of required) if (!Object.hasOwn(value, key)) throw new Error(`INVALID_ENVELOPE: missing ${key}`);
   const allowed = new Set([...required, 'actor_id', 'agent_task_id', 'correlation_id', 'causation_id']);
   for (const key of Object.keys(value)) if (!allowed.has(key)) throw new Error(`INVALID_ENVELOPE: unknown ${key}`);
-  if (value.schema_version !== '1.4.0') throw new Error('INVALID_ENVELOPE: unsupported schema_version');
+  if (value.schema_version !== '1.5.0') throw new Error('INVALID_ENVELOPE: unsupported schema_version');
   if (!ULID.test(value.event_id) || !ULID.test(value.run_id)) throw new Error('INVALID_ENVELOPE: invalid ULID');
   for (const key of ['agent_task_id', 'correlation_id', 'causation_id']) if (value[key] != null && !ULID.test(value[key])) throw new Error(`INVALID_ENVELOPE: invalid ${key}`);
   if (typeof value.idempotency_key !== 'string' || value.idempotency_key.length < 1 || value.idempotency_key.length > 1024 || /[\u0000-\u001f\u007f]/u.test(value.idempotency_key)) throw new Error('INVALID_ENVELOPE: invalid idempotency_key');
@@ -134,7 +134,7 @@ function validateProcess(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('process sidecar must be an object');
   const allowed = new Set(['schema_version', 'result_type', 'agent_id', 'explicit_rationale', 'evidence_refs', 'recon_facts', 'hypotheses', 'hypothesis_relations', 'attack_plans', 'observations', 'decision_input', 'critic_review']);
   for (const key of Object.keys(value)) if (!allowed.has(key)) throw new Error(`unknown process field: ${key}`);
-  if (value.schema_version !== '1.4.0') throw new Error('unsupported process schema_version');
+  if (value.schema_version !== '1.5.0') throw new Error('unsupported process schema_version');
   if (!PROCESS_TYPES.has(value.result_type)) throw new Error('invalid process result_type');
   if (!AGENT_ID.test(value.agent_id) || RESERVED.test(value.agent_id)) throw new Error('invalid process agent_id');
   if (typeof value.explicit_rationale !== 'string' || !value.explicit_rationale.trim() || value.explicit_rationale.length > 20000) throw new Error('invalid explicit_rationale');

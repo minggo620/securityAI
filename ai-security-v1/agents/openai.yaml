@@ -1,7 +1,7 @@
 interface:
   display_name: "AISecurity v1"
-  short_description: "Security audits and controlled ai_security database access"
-  default_prompt: "Use $ai-security-v1 to audit code or safely work with the configured ai_security database."
+  short_description: "Security work with mandatory strict ai_security telemetry"
+  default_prompt: "Use $ai-security-v1 with mandatory database preflight, per-transaction notices, and strict remote telemetry."
 
 policy:
   allow_implicit_invocation: true

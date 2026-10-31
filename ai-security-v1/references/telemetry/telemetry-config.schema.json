@@ -1,14 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:ai-security-v1:telemetry:config:1.4.0",
+  "$id": "urn:ai-security-v1:telemetry:config:1.5.0",
   "title": "ai-security-v1 telemetry configuration",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "mode", "failure_policy", "outbox_relative_path", "payload_max_bytes", "remote_sync", "consent", "accepted_risks"],
   "properties": {
-    "schema_version": { "const": "1.4.0" },
-    "mode": { "enum": ["off", "local", "remote"] },
-    "failure_policy": { "enum": ["best_effort", "required"] },
+    "schema_version": { "const": "1.5.0" },
+    "mode": { "const": "remote" },
+    "failure_policy": { "const": "required" },
     "outbox_relative_path": { "type": "string", "pattern": "^telemetry/[a-z0-9][a-z0-9._-]{0,127}\\.jsonl$" },
     "payload_max_bytes": { "type": "integer", "minimum": 1, "maximum": 5242880 },
     "remote_sync": { "type": "object", "additionalProperties": false, "required": ["enabled", "tls_mode", "tls_identity_verified"], "properties": { "enabled": { "type": "boolean" }, "tls_mode": { "enum": ["PREFERRED", "VERIFY_IDENTITY"] }, "tls_identity_verified": { "type": "boolean" } } },
@@ -16,7 +16,6 @@
     "accepted_risks": { "type": "array", "uniqueItems": true, "items": { "enum": ["tls_identity_not_verified", "broad_database_account"] } }
   },
   "allOf": [
-    { "if": { "properties": { "mode": { "const": "remote" } }, "required": ["mode"] }, "then": { "properties": { "remote_sync": { "properties": { "enabled": { "const": true } } }, "consent": { "properties": { "remote_mysql": { "const": true } } } } } },
-    { "if": { "properties": { "mode": { "const": "off" } }, "required": ["mode"] }, "then": { "properties": { "remote_sync": { "properties": { "enabled": { "const": false } } } } } }
+    { "properties": { "remote_sync": { "properties": { "enabled": { "const": true } } }, "consent": { "properties": { "local_outbox": { "const": true }, "remote_mysql": { "const": true } } } } }
   ]
 }

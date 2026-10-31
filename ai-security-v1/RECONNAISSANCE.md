@@ -6,7 +6,7 @@ The parent initializes `run-metadata.json`, applies the strict pre-reconnaissanc
 
 Launch several `research` agents in parallel. They return structured facts to the parent and do not write files.
 
-When telemetry is enabled, the Parent records `agent.task_started` before each launch (`DB-P1-01`) and adds the common return suffix below to every Recon prompt. The core `facts` remain the reconnaissance input; `_process` is a separately validated observational sidecar. Under `best_effort`, accept a valid legacy core response if `_process` is absent or malformed, mark its process data `process_missing` or discarded, and continue. Under `required`, retry within the budget or finish incomplete. An Agent never creates telemetry/database identifiers, projections, events, or SQL.
+The Parent prepares, announces, and commits `agent.task_started` before each launch (`DB-P1-01`) and adds the common return suffix below to every Recon prompt. The core `facts` remain the reconnaissance input; `_process` is a separately validated observational sidecar. A missing or malformed required sidecar blocks the task; retry within budget or finish incomplete. An Agent never creates telemetry/database identifiers, projections, events, or SQL.
 
 **Agent 1a: Product, stack, and local operation**
 
@@ -63,12 +63,12 @@ When process telemetry is enabled, return exactly one JSON object and no surroun
 prose. Put the source facts requested above in `facts`; each fact has a local `fact_id`,
 `fact_kind` (`source_fact|inference|unknown`), statement, repository-relative source
 references, evidence strength (`direct|corroborated|indirect|none`), and an exact
-unknown reason when applicable. Add `_process` matching the telemetry 1.4.0 sidecar:
+unknown reason when applicable. Add `_process` matching the telemetry 1.5.0 sidecar:
 
 {
   "facts": [ ...the role-specific core facts... ],
   "_process": {
-    "schema_version": "1.4.0",
+    "schema_version": "1.5.0",
     "result_type": "recon",
     "agent_id": "<assigned-agent-id>",
     "explicit_rationale": "concise evidence-based synthesis; never hidden reasoning",
@@ -83,7 +83,7 @@ execution_visibility, or focused. Do not include credentials, host absolute path
 complete environments, authentication state, or hidden chain-of-thought.
 ```
 
-After a Recon return, the Parent first validates and consumes `facts`, then passes the complete result and trusted acceptance/context maps to `record-event`. The runtime `agent-adapter.cjs` validates `_process`, records the redacted output snapshot, creates one `recon.fact_recorded` event per fact with its evidence, and completes the Agent task (`DB-P1-02`). A valid sidecar must not be retained only as an opaque payload. `accepted_by_parent` and `included_in_architecture` are Parent decisions, never Agent assertions. Record the platform model provider/name/version/reasoning effort only when observable; otherwise store null rather than guessing.
+After a Recon return, the Parent first validates and consumes `facts`, then passes the complete result and trusted acceptance/context maps to strict `prepare`. The runtime `agent-adapter.cjs` validates `_process`, expands the redacted result into one `recon.fact_recorded` event per fact plus task completion, and returns an ordered transaction plan. Announce and commit every transaction separately. A valid sidecar must not be retained only as an opaque payload. `accepted_by_parent` and `included_in_architecture` are Parent decisions, never Agent assertions. Record the platform model provider/name/version/reasoning effort only when observable; otherwise store null rather than guessing.
 
 Add focused reconnaissance agents for materially distinct deployment modes or subsystems that these four do not map. Do not silently omit them: if the budget gate in `SKILL.md` blocks a focused agent, launch nothing for it, seed the unmapped area as a `deferred` ledger unit with reason `budget_cannot_reserve_critics_and_validation`, and disclose the gap in the report.
 

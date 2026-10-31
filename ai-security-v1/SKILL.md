@@ -1,18 +1,36 @@
 ---
 name: ai-security-v1
-description: Security guidance and vulnerability review for codebases, APIs, services, CLI tools, libraries, and daemons, plus controlled access to the configured ai_security MySQL database. Use for security reviews or explicit work with that database; do not use the database capability for unrelated MySQL servers.
+description: Security guidance and vulnerability review for codebases, APIs, services, CLI tools, libraries, and daemons, plus controlled access to the configured ai_security MySQL database. Every explicit or implicit invocation requires database preflight, per-transaction user notices, and strict remote ai_security audit telemetry; do not use the database capability for unrelated MySQL servers.
 ---
 
 # AISecurity v1
 
 Find vulnerabilities that violate a real trust boundary, then give owners the source evidence, safe reproduction, priority, and smallest effective fix. This is a defensive, source-first workflow. A candidate without a concrete affected principal, resource, or security outcome is not a confirmed finding.
 
+## Mandatory database gate for every invocation
+
+Every explicit or implicit invocation of this Skill uses strict remote telemetry, including guidance, focused review, full audit, and direct database work. Read [TELEMETRY.md](TELEMETRY.md) before taking any task action. The only supported telemetry configuration is `remote` plus `required`; `off`, `local`, `best_effort`, silent degradation, and delivery with an uncommitted Outbox tail are forbidden.
+
+The first task action after loading this Skill is always:
+
+1. Tell the user: `数据库预检：准备检查 ai_security 连接、认证、Schema 指纹、事务能力和本地 Outbox；预检通过前不会开始安全任务。`
+2. Run `node <skill-dir>/scripts/telemetry/audit-session.cjs check-db [--output-dir <dir>]`.
+3. If it fails, report only its stable code and `safe_reason`, state that no target work began, and stop. Never expose stderr, credentials, connection strings, complete environments, or host paths.
+4. If it succeeds, tell the user that the database and pinned 36-table contract are available, then prepare `run.initialized`.
+
+Every database transaction uses the strict two-stage interface. Call `prepare` first. Before each transaction returned by the prepared plan, print a compact commentary notice containing its `position`, `purpose`, `data_summary`, `target_tables`, and `data_level`. Then call `commit-next` with that transaction's ordinal and `notice_token`. After it returns, report `projected` or `already_applied`, the event ID, and the next action. If it returns `retry_required`, report the temporary failure and immediately retry the same ordinal once with `--retry true`; do not ask the user. A second failure or any non-retryable failure stops the task. Do not prepare or execute the next task action until the current transaction is committed.
+
+One Agent result may expand into multiple events. Announce and commit each event separately and in order. The legacy `init|event|snapshot|flush|finalize` wrapper commands are not valid for new sessions. Before delivering a final answer, prepare and commit `run.finalized`, run `verify`, and require a completion receipt.
+
+Store only redacted structured summaries for ordinary guidance and focused reviews. Never retain the complete user request, complete answer, sensitive database rows, SQL values, credentials, absolute host paths, complete environments, or hidden reasoning. Strict telemetry authorization does not authorize arbitrary database inspection or mutation.
+
 ## Operating modes
 
-This skill is guidance by default. Loading it does not authorize the complete audit workflow or file creation.
+This skill is guidance by default. Loading it does not authorize the complete audit workflow or audit-artifact creation, but it does authorize the mandatory strict telemetry lifecycle above.
 
-- **Guidance mode**: For security questions, focused reviews, methodology, triage, or investigation of specific findings, use only the relevant parts of this skill. Do not automatically run all six phases, create an output directory, or write audit artifacts. You may launch focused agents when useful; they return results to the current task.
-- **Full audit mode**: Use the complete workflow when the user explicitly asks to audit or pen-test a codebase, asks for a full, comprehensive, or end-to-end security review, or requests report artifacts. Run Phase 0 and all six audit phases and write the files defined below. Process telemetry defaults to remote, best-effort projection into the configured `ai_security.audit_*` tables through the local Outbox described in [TELEMETRY.md](TELEMETRY.md); it is a sidecar and never a verdict source.
+- **Guidance mode**: For security questions, focused reviews, methodology, triage, or investigation of specific findings, use only the relevant security guidance. Do not automatically run all six audit phases or write audit artifacts. Still record `run.initialized`, `run.preflight_completed`, one redacted `interaction.checkpoint_recorded`, and `run.finalized`, each as a separately announced and committed transaction.
+- **Focused review mode**: For bounded source review or delegated investigation, add phase and Agent task/result events between initialization and the redacted interaction checkpoint. Every expanded event is individually announced and committed.
+- **Full audit mode**: Use the complete workflow when the user explicitly asks to audit or pen-test a codebase, asks for a full, comprehensive, or end-to-end security review, or requests report artifacts. Run Phase 0 and all six audit phases and write the files defined below. Every required record point is a blocking remote transaction; database failure stops advancement.
 - **Database mode**: Use only when the user explicitly asks to inspect, query, export, or modify the configured `ai_security` MySQL database. Before any direct database operation, read and follow [DATABASE.md](DATABASE.md). Full audits use the project's standing `ai_security` telemetry policy automatically; ordinary live database work remains a separate mode.
 
 If the request could mean either mode, ask one focused question before creating files or starting the complete workflow.
@@ -86,7 +104,7 @@ Before execution, the parent opens and retains trusted, non-inheritable director
 
 For a reproduced check, record the command, exact test input, sandbox limits, and only the allowlisted environment variable names plus safe non-secret values needed to reproduce it. Never capture or copy the ambient environment, inherited variables, credential values, authentication state, or unrelated host paths. Launch from an empty environment rather than trying to redact one after execution.
 
-Before delegation, the parent completes Phase 0 in [TELEMETRY.md](TELEMETRY.md), then writes `run-metadata.json` with at least `run_id`, `repo`, `target`, `source_ref`, `profile`, `scope_paths`, `budget` (null if unset), `execution_policy: "sandboxed-source-and-local-only"`, selected companion files, prior-run paths, shared-file owners, `telemetry_mode`, `telemetry_failure_policy`, local/remote/outbox status, and `run_status: "in_progress"`. Full audits must use remote telemetry unless the user explicitly selects `telemetry=off`; database failure is recorded as `pending_sync` while a healthy Outbox allows the audit to continue. Update metadata only when those facts change; candidate state belongs in the coverage ledger and `findings.json`. In `off` mode, omit telemetry files and preserve the pre-telemetry audit behavior.
+Before delegation, the parent completes the strict database preflight and commits Phase 0 as defined in [TELEMETRY.md](TELEMETRY.md), then writes `run-metadata.json` with at least `run_id`, `repo`, `target`, `source_ref`, `profile`, `scope_paths`, `budget` (null if unset), `execution_policy: "sandboxed-source-and-local-only"`, selected companion files, prior-run paths, shared-file owners, `telemetry_mode: "remote"`, `telemetry_failure_policy: "required"`, checkpoint status, and `run_status: "in_progress"`. An uncommitted record blocks delegation. Update metadata only when those facts change; candidate state belongs in the coverage ledger and `findings.json`.
 
 ## Full audit planning
 
@@ -170,15 +188,15 @@ For each confirmed finding, identify the invariant the code must enforce and the
 
 ## Full audit workflow
 
-In full audit mode, first read [TELEMETRY.md](TELEMETRY.md), then follow Phase 0 and all six audit phases in order. Call `init-run` before launching any Agent. Telemetry events are recorded only after the Parent validates the source result and its ownership. Every valid Recon/Hunter/Critic/Verifier result with `_process` must be submitted through the `record-event` Agent-result form so `agent-adapter.cjs` creates the normalized process records; retaining only an opaque Agent payload is incomplete telemetry. Under `best_effort`, a telemetry failure never changes a valid core result, but it must leave a durable Outbox record and an explicit synchronization status.
+In full audit mode, first read [TELEMETRY.md](TELEMETRY.md), then follow Phase 0 and all six audit phases in order. Complete `check-db`, prepare initialization, and announce and commit both P0 transactions before launching any Agent. Telemetry events are recorded only after the Parent validates the source result and its ownership. Every valid Recon/Hunter/Critic/Verifier result with `_process` must be expanded through `prepare`; announce and commit every normalized event separately. Retaining only an opaque Agent payload or advancing with an uncommitted event is incomplete and blocks the run.
 
-0. **Run and telemetry initialization** — resolve scope, budget, accepted risks, and Outbox capability; use remote telemetry by default, call `init-run` before launching any Agent, and continue only with `pending_sync` when remote MySQL is temporarily unavailable but the Outbox is healthy.
+0. **Run and telemetry initialization** — resolve scope, budget, accepted risks, and Outbox capability; pass strict database preflight, then separately announce and commit `run.initialized` and `run.preflight_completed`. Remote failure stops the run.
 1. **Reconnaissance** — map the source, trust boundaries, local build paths, companion selections, prior evidence, and initial deterministic coverage ledger with [RECONNAISSANCE.md](RECONNAISSANCE.md); record `DB-P1-01` through `DB-P1-05`.
 2. **Coverage-led hunting waves** — assign isolated hunters from the ledger, freeze the source-only hypothesis/score/attack-plan checkpoint before targeted validation, then collect actual observations and candidate results with [HUNTING.md](HUNTING.md), [ATTACK-CLASSES.md](ATTACK-CLASSES.md), and the selected domain companions; record `DB-P2-01` through `DB-P2-07`.
 3. **Candidate validation** — consolidate fingerprints and give every candidate to a fresh source verifier as defined in [VALIDATION-AND-REPORTING.md](VALIDATION-AND-REPORTING.md); record immutable validation inputs, observations, and decisions.
 4. **Structured output** — write all final `confirmed`, `needs_validation`, and `rejected` records to `findings.json`; validate it with `report-schema.json` and `validate-findings.cjs`, validate the coverage claim with `validate-coverage-ledger.cjs`, and record the exact file/tool hashes.
 5. **Independent record verification** — use fresh agents to verify final source claims and reconcile corrections or state changes with append-only finding revisions.
-6. **Target-neutral report** — derive `REPORT.md`, `FINDINGS-DETAIL.md`, and `NEEDS-VALIDATION.md` from the final records, snapshot their metadata, freeze the research-input boundary, flush the Outbox, and finalize audit and telemetry statuses separately.
+6. **Target-neutral report** — derive `REPORT.md`, `FINDINGS-DETAIL.md`, and `NEEDS-VALIDATION.md` from the final records, snapshot their metadata, freeze the research-input boundary, commit `run.finalized`, verify the remote terminal envelope and exact checkpoint, and require the completion receipt before delivery.
 
 Do not end the run before one of exactly two terminal states: (a) all Phase 6 artifacts are written and both validators pass, or (b) `run_status: "incomplete"` is recorded with its exact reason and the gap is disclosed in the report. Never stop mid-phase.
 
