@@ -1,5 +1,7 @@
 # Strict audit process telemetry
 
+The remote transport is `scripts/telemetry/mysql-access.sh`. The CJS coordinator handles event construction and validation, then passes SQL on standard input to the Shell transport. The Shell process replaces itself with `mysql`, preserving the coordinator's 60-second per-call timeout and signal handling. This transport change alone does not establish or resolve the cause of a database timeout.
+
 Telemetry protocol `1.5.0` uses the deployed `1.3.0-core` 36-table `ai_security.audit_*` schema. It is mandatory for every explicit or implicit invocation of this Skill. Only `mode=remote` and `failure_policy=required` are valid. `off`, `local`, `best_effort`, `pending_sync` delivery, and silent degradation are forbidden for new sessions.
 
 The database remains a replayable process projection, never evidence about the target and never input to a security verdict. Mandatory telemetry authorization does not authorize arbitrary database queries or mutations.
@@ -65,6 +67,8 @@ Commit, in order: `run.initialized`, `run.preflight_completed`, `interaction.che
 ### Focused review
 
 Use the Guidance lifecycle plus phase start/end and every applicable tool or Agent task/result event. Every adapter-expanded event is separately announced and committed.
+
+For manually constructed events, check the event's `required_tables` in [the projection map](references/telemetry/projection-map.json). `kind: "event"` does not automatically create business-table operations: both `phase.started` and `phase.completed` require an explicit `payload.projections` operation on `audit_phase_execution`. A summary-only phase event fails local `prepare` with `PROJECTION_FAILED`, before any remote transaction. Use [the focused-review phase example](references/telemetry/focused-review-phases.md) when constructing these events.
 
 ### Full audit
 

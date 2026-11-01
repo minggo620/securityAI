@@ -1,0 +1,32 @@
+{
+  "change": "Persist explicit phase projection guidance and executable documentation regression tests",
+  "root_cause": "Caller omitted audit_phase_execution operations from a manually constructed phase.started event",
+  "runtime_code_changed": false,
+  "installed_skill_updated": false,
+  "modified_files": [
+    "ai-security-v1/TELEMETRY.md"
+  ],
+  "added_files": [
+    "ai-security-v1/references/telemetry/focused-review-phases.md",
+    "ai-security-v1/scripts/telemetry/tests/focused-review-example.test.cjs"
+  ],
+  "local_validation": {
+    "documentation_regression_tests": {
+      "passed": 2,
+      "failed": 0
+    },
+    "skill_quick_validate": "passed"
+  },
+  "prior_remote_retest": {
+    "receipt": "completion-receipt.json",
+    "status": "verified",
+    "events": 6,
+    "scope": "Corrected caller payload using the installed skill; not a new remote run of the project copy"
+  },
+  "source_review": {
+    "target": "1.c",
+    "mode": "static",
+    "target_modified": false,
+    "target_executed": false
+  }
+}

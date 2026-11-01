@@ -40,14 +40,16 @@ function mysqlArgs(options = {}) {
   const value = connection();
   const tlsMode = options.tlsMode || 'PREFERRED';
   if (!new Set(['PREFERRED', 'VERIFY_IDENTITY']).has(tlsMode)) throw new Error('AUTH_REQUIRED: invalid TLS mode');
-  return ['--host', value.host, '--port', String(value.port), '--user', value.user, '--database', value.database, '--connect-timeout=10', `--ssl-mode=${tlsMode}`, '--default-character-set=utf8mb4', '--batch', '--raw', '--skip-column-names'];
+  return ['--host', value.host, '--port', String(value.port), '--user', value.user, '--database', value.database, '--connect-timeout=30', `--ssl-mode=${tlsMode}`, '--default-character-set=utf8mb4', '--batch', '--raw', '--skip-column-names'];
 }
 
 function classifiedError(stderr) {
   const text = String(stderr || '');
   let code = 'PROJECTION_FAILED';
   let retryable = false;
-  if (/CONCURRENCY_CONFLICT/.test(text)) code = 'CONCURRENCY_CONFLICT';
+  if (/MYSQL_CLIENT_UNAVAILABLE/.test(text)) code = 'MYSQL_CLIENT_UNAVAILABLE';
+  else if (/AUTH_REQUIRED/.test(text)) code = 'AUTH_REQUIRED';
+  else if (/CONCURRENCY_CONFLICT/.test(text)) code = 'CONCURRENCY_CONFLICT';
   else if (/Access denied|using password:|authentication plugin/i.test(text)) code = 'AUTH_REQUIRED';
   else if (/SSL|TLS|certificate|cipher/i.test(text)) code = 'TLS_ERROR';
   else if (/Can't connect|Lost connection|server has gone away|timed?\s*out|connection.*(?:refused|reset)|Unknown MySQL server host/i.test(text)) { code = 'DB_UNAVAILABLE'; retryable = true; }
@@ -60,7 +62,9 @@ function classifiedError(stderr) {
 
 function runMysql(sql, options = {}) {
   const profile = connection();
-  const result = cp.spawnSync('mysql', mysqlArgs(options), { input: sql, encoding: 'utf8', env: { ...process.env, MYSQL_PWD: profile.password }, maxBuffer: 8 * 1024 * 1024, timeout: options.timeoutMs || 30000, killSignal: 'SIGTERM' });
+  const tlsMode = options.tlsMode || 'PREFERRED';
+  if (!new Set(['PREFERRED', 'VERIFY_IDENTITY']).has(tlsMode)) throw new Error('AUTH_REQUIRED: invalid TLS mode');
+  const result = cp.spawnSync('/bin/sh', [path.join(__dirname, 'mysql-access.sh'), tlsMode], { input: sql, encoding: 'utf8', env: { ...process.env, AI_SECURITY_DB_HOST: profile.host, AI_SECURITY_DB_PORT: String(profile.port), AI_SECURITY_DB_USER: profile.user, AI_SECURITY_DB_NAME: profile.database, MYSQL_PWD: profile.password }, maxBuffer: 8 * 1024 * 1024, timeout: options.timeoutMs || 60000, killSignal: 'SIGTERM' });
   if (result.error) {
     const unavailable = result.error.code === 'ENOENT' ? 'MYSQL_CLIENT_UNAVAILABLE' : 'DB_UNAVAILABLE';
     const error = new Error(result.error.code === 'ETIMEDOUT' ? 'DB_UNAVAILABLE: mysql client timed out' : `${unavailable}: mysql client could not start`);

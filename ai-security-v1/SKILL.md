@@ -5,6 +5,8 @@ description: Security guidance and vulnerability review for codebases, APIs, ser
 
 # AISecurity v1
 
+Remote database access uses `scripts/telemetry/mysql-access.sh` (POSIX Shell + the MySQL CLI). Use this Shell entrypoint for authorized direct SQL through standard input; do not create a Node.js database-access script. The existing CJS telemetry coordinator invokes the same Shell transport and retains event validation, notices, Outbox, and retry semantics. See [DATABASE.md](DATABASE.md) for direct access.
+
 Find vulnerabilities that violate a real trust boundary, then give owners the source evidence, safe reproduction, priority, and smallest effective fix. This is a defensive, source-first workflow. A candidate without a concrete affected principal, resource, or security outcome is not a confirmed finding.
 
 ## Mandatory database gate for every invocation

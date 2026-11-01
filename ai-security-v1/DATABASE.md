@@ -1,5 +1,22 @@
 # Configured ai_security MySQL Database
 
+## Shell access entrypoint
+
+Use `sh <skill-dir>/scripts/telemetry/mysql-access.sh [PREFERRED|VERIFY_IDENTITY]` and pass SQL through standard input. This entrypoint needs only POSIX Shell, awk, and the MySQL CLI; direct access does not require Node.js. It reads the configured connection fields below, with existing `AI_SECURITY_DB_HOST`, `AI_SECURITY_DB_PORT`, `AI_SECURITY_DB_USER`, `AI_SECURITY_DB_NAME`, and `MYSQL_PWD` overrides. Only database `ai_security` is permitted. Credentials are passed through the child environment, never command-line arguments. Do not enable shell tracing. Capture errors privately and report only a stable error category; never publish raw MySQL stderr.
+
+Example SQL for an authorized read-only table count:
+
+```sh
+sh <skill-dir>/scripts/telemetry/mysql-access.sh <<'SQL'
+START TRANSACTION READ ONLY;
+SELECT TABLE_TYPE, COUNT(*) FROM INFORMATION_SCHEMA.TABLES
+WHERE TABLE_SCHEMA = DATABASE() GROUP BY TABLE_TYPE;
+COMMIT;
+SQL
+```
+
+The Shell transport performs no automatic retry and does not authorize SQL mutations. Direct invocations have a 30-second connection timeout; use a bounded process runner for an overall query deadline. Telemetry invokes this transport with its existing 60-second process deadline. All authorization and telemetry rules below remain in effect unless explicitly overridden by the user.
+
 Read this file for direct database work and for the telemetry connection boundary. Direct database access remains separately authorized. Every Skill invocation, including database mode, first completes the strict remote telemetry lifecycle in [TELEMETRY.md](TELEMETRY.md).
 
 Process telemetry for guidance, focused review, full audit, and database mode writes each record point to the configured `ai_security.audit_*` tables under the standing `remote_mysql` organization policy. Each transaction is prepared, announced to the user, appended to the Outbox, and committed before work continues. The database is a replayable projection and may not feed database content back into a current audit verdict.
